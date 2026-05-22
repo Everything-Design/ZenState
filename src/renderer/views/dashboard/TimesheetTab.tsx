@@ -105,6 +105,17 @@ export default function TimesheetTab({ records, isPro, onRefreshRecords }: Props
   // Posts to Basecamp immediately for linked entries.
   const [addingSession, setAddingSession] = useState(false);
   const { toasts, addToast, dismiss } = useToast();
+  // v5.1.4 — Set of session IDs whose notes are expanded. Click the inline
+  // note to expand/collapse the full text.
+  const [expandedNotes, setExpandedNotes] = useState<Set<string>>(new Set());
+  const toggleNoteExpansion = (sessionId: string) => {
+    setExpandedNotes((prev) => {
+      const next = new Set(prev);
+      if (next.has(sessionId)) next.delete(sessionId);
+      else next.add(sessionId);
+      return next;
+    });
+  };
 
   // Filter records by period
   const filteredRecords = useMemo(() => {
@@ -431,6 +442,34 @@ export default function TimesheetTab({ records, isPro, onRefreshRecords }: Props
                   {session.startTime ? new Date(session.startTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : ''}
                   {session.endTime ? ` — ${new Date(session.endTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}` : ''}
                 </div>
+                {/* v5.1.4 — Inline notes (truncated, click to expand). */}
+                {session.notes && (
+                  <div
+                    onClick={() => toggleNoteExpansion(session.id)}
+                    title="Click to expand/collapse"
+                    style={{
+                      fontSize: 11,
+                      color: 'var(--zen-secondary-text)',
+                      marginTop: 4,
+                      cursor: 'pointer',
+                      display: 'flex',
+                      alignItems: 'flex-start',
+                      gap: 6,
+                      lineHeight: 1.4,
+                      maxWidth: '100%',
+                    }}
+                  >
+                    <FileText size={11} style={{ marginTop: 2, flexShrink: 0, color: 'var(--zen-tertiary-text)' }} />
+                    <span style={{
+                      whiteSpace: expandedNotes.has(session.id) ? 'pre-wrap' : 'nowrap',
+                      overflow: 'hidden',
+                      textOverflow: 'ellipsis',
+                      wordBreak: 'break-word',
+                    }}>
+                      {session.notes}
+                    </span>
+                  </div>
+                )}
               </div>
               <div style={{
                 fontSize: 12,
@@ -442,9 +481,6 @@ export default function TimesheetTab({ records, isPro, onRefreshRecords }: Props
                 gap: 4,
               }}>
                 {formatDuration(session.duration)}
-                {session.notes && (
-                  <span title={session.notes} style={{ cursor: 'default', display: 'flex', alignItems: 'center' }}><FileText size={12} /></span>
-                )}
               </div>
               <div className="session-actions">
                 <button
@@ -627,6 +663,34 @@ export default function TimesheetTab({ records, isPro, onRefreshRecords }: Props
                     <div style={{ fontSize: 10, color: 'var(--zen-tertiary-text)', marginTop: 2 }}>
                       {session.startTime ? new Date(session.startTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : ''}
                     </div>
+                    {/* v5.1.4 — Inline notes (truncated, click to expand). */}
+                    {session.notes && (
+                      <div
+                        onClick={() => toggleNoteExpansion(session.id)}
+                        title="Click to expand/collapse"
+                        style={{
+                          fontSize: 11,
+                          color: 'var(--zen-secondary-text)',
+                          marginTop: 4,
+                          cursor: 'pointer',
+                          display: 'flex',
+                          alignItems: 'flex-start',
+                          gap: 6,
+                          lineHeight: 1.4,
+                          maxWidth: '100%',
+                        }}
+                      >
+                        <FileText size={11} style={{ marginTop: 2, flexShrink: 0, color: 'var(--zen-tertiary-text)' }} />
+                        <span style={{
+                          whiteSpace: expandedNotes.has(session.id) ? 'pre-wrap' : 'nowrap',
+                          overflow: 'hidden',
+                          textOverflow: 'ellipsis',
+                          wordBreak: 'break-word',
+                        }}>
+                          {session.notes}
+                        </span>
+                      </div>
+                    )}
                   </div>
                   <div style={{
                     fontSize: 12,
@@ -638,9 +702,6 @@ export default function TimesheetTab({ records, isPro, onRefreshRecords }: Props
                     gap: 4,
                   }}>
                     {formatDuration(session.duration)}
-                    {session.notes && (
-                      <span title={session.notes} style={{ cursor: 'default', display: 'flex', alignItems: 'center' }}><FileText size={12} /></span>
-                    )}
                   </div>
                   <div className="session-actions">
                     <button

@@ -1,5 +1,7 @@
-import { shell, safeStorage } from 'electron';
+import { shell, safeStorage, app } from 'electron';
 import { EventEmitter } from 'events';
+import fs from 'fs';
+import path from 'path';
 import http from 'http';
 import crypto from 'crypto';
 import { URL } from 'url';
@@ -38,13 +40,32 @@ interface BasecampStoreSchema {
   basecampAuth: StoredAuth | null;
 }
 
-const store = new Store<BasecampStoreSchema>({
-  name: 'zenstate-basecamp',
-  defaults: {
-    basecampCredentials: null,
-    basecampAuth: null,
-  },
-});
+// v5.1.4 — Corrupt-file recovery. See note in persistence.ts.
+function createBasecampStoreWithRecovery() {
+  const opts = {
+    name: 'zenstate-basecamp',
+    defaults: {
+      basecampCredentials: null,
+      basecampAuth: null,
+    },
+  };
+  try {
+    return new Store<BasecampStoreSchema>(opts);
+  } catch (err) {
+    try {
+      const file = path.join(app.getPath('userData'), `${opts.name}.json`);
+      if (fs.existsSync(file)) {
+        fs.renameSync(file, `${file}.corrupt-${Date.now()}`);
+        console.warn(`[basecamp] Corrupt store quarantined; reinitialising. Original error:`, err);
+      }
+    } catch (cleanupErr) {
+      console.error('[basecamp] Recovery cleanup failed:', cleanupErr);
+    }
+    return new Store<BasecampStoreSchema>(opts);
+  }
+}
+
+const store = createBasecampStoreWithRecovery();
 
 let warnedNoEncryption = false;
 function encrypt(value: string): EncField {

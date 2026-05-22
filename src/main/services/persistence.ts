@@ -1,5 +1,36 @@
+import fs from 'fs';
+import path from 'path';
+import { app } from 'electron';
 import Store from 'electron-store';
 import { User, DailyRecord, FocusSchedule, AppSettings, TodayPlan, RecentTodo, PinnedTodo, PeerGroup } from '../../shared/types';
+
+// v5.1.4 — One-shot corrupt-file recovery. `new Store({ name })` can throw at
+// module load time on Windows when zenstate-data.json is corrupt (prior crash
+// mid-write, antivirus mid-scan, partial OneDrive sync). Without recovery the
+// throw kills the main process before app.on('ready') ever runs — user sees a
+// silent fail. Try once; if it throws, quarantine the corrupt file and retry.
+function createStoreWithRecovery<T extends Record<string, unknown>>(
+  options: ConstructorParameters<typeof Store<T>>[0],
+): Store<T> {
+  try {
+    return new Store<T>(options);
+  } catch (err) {
+    try {
+      const userDataDir = app.getPath('userData');
+      const file = path.join(userDataDir, `${(options as { name?: string }).name ?? 'config'}.json`);
+      if (fs.existsSync(file)) {
+        const quarantined = `${file}.corrupt-${Date.now()}`;
+        fs.renameSync(file, quarantined);
+        console.warn(`[persistence] Corrupt store quarantined to ${quarantined}; reinitialising defaults. Original error:`, err);
+      } else {
+        console.warn('[persistence] Store init threw despite no file present; retrying:', err);
+      }
+    } catch (cleanupErr) {
+      console.error('[persistence] Recovery cleanup failed:', cleanupErr);
+    }
+    return new Store<T>(options);
+  }
+}
 
 const RECENTS_MAX = 8; // cap so the list stays useful, not cluttered
 
@@ -13,7 +44,7 @@ const DEFAULT_APP_SETTINGS: AppSettings = {
   miniTimerAutoDim: false, // off by default — opt-in for users who find the pill too prominent
 };
 
-const store = new Store({
+const store = createStoreWithRecovery({
   name: 'zenstate-data',
   defaults: {
     currentUser: null as User | null,

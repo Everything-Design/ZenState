@@ -26,6 +26,7 @@ interface TimerState {
   isRunning: boolean;
   isPaused: boolean;
   taskLabel: string;
+  basecampTodoId?: number; // v5.1.4 — disambiguate same-name pinned todos
 }
 
 interface Props {
@@ -91,12 +92,19 @@ export default function TodayTab({ timerState, records, onOpenSettings, onRefres
   }, []);
 
   const handlePinned = useCallback(async (pinnedTodoIds: number[]) => {
-    // After batch pin, refresh plan from main process via today:get so the
-    // items appear in the plan list. todayPinMany already updated the store;
-    // we subscribe to TODAY_CHANGED so this is belt-and-suspenders.
+    // After batch pin, refresh plan from main process so the items appear in
+    // the plan list. todayPinMany already updated the store + broadcast
+    // TODAY_CHANGED (which the subscription on line 76 catches) — this is
+    // belt-and-suspenders. v5.1.4: surface fetch errors instead of silently
+    // swallowing them. A stale `plan` here would cascade into a stale
+    // `alreadyPinned` Set, which would let the picker re-show pinned items.
     void pinnedTodoIds;
-    const res = await window.zenstate.todayGet().catch(() => null);
-    if (res) { setPlan(res.plan); setRecents(res.recents); }
+    try {
+      const res = await window.zenstate.todayGet();
+      if (res) { setPlan(res.plan); setRecents(res.recents); }
+    } catch (err) {
+      console.warn('[TodayTab] handlePinned refresh failed (TODAY_CHANGED broadcast should still arrive):', err);
+    }
   }, []);
 
   const handleUnpin = useCallback(async (todoId: number) => {
@@ -128,7 +136,14 @@ export default function TodayTab({ timerState, records, onOpenSettings, onRefres
     const item = plan.items.find((p) => p.todoId === todoId);
     if (!item) return;
     const wasIncomplete = !item.completedAt;
-    const isThisRunning = timerState.isRunning && timerState.taskLabel === item.content;
+    // v5.1.4 — Prefer todoId match (unique) over label match (collides when
+    // two pinned items share the same name, e.g. "Edit" pinned from two
+    // different lists in the same Basecamp project).
+    const isThisRunning = timerState.isRunning && (
+      (timerState.basecampTodoId && item.todoId)
+        ? timerState.basecampTodoId === item.todoId
+        : timerState.taskLabel === item.content
+    );
 
     if (wasIncomplete && isThisRunning) {
       // Wait for the stop to land in main + the timer-update broadcast to come back,
@@ -145,9 +160,18 @@ export default function TodayTab({ timerState, records, onOpenSettings, onRefres
     }
     const next = await window.zenstate.todayToggleComplete(todoId).catch(() => null);
     if (next) setPlan(next);
-  }, [plan.items, timerState.isRunning, timerState.taskLabel]);
+  }, [plan.items, timerState.isRunning, timerState.taskLabel, timerState.basecampTodoId]);
 
-  const isRunning = (item: PinnedTodo) => timerState.isRunning && timerState.taskLabel === item.content;
+  // v5.1.4 — todoId-first match. Falls back to label match for non-Basecamp
+  // timer sessions (where basecampTodoId is undefined). See same logic in
+  // handleToggleComplete above; MenuBarView mirrors this for the popover.
+  const isRunning = (item: PinnedTodo) => {
+    if (!timerState.isRunning) return false;
+    if (timerState.basecampTodoId && item.todoId) {
+      return timerState.basecampTodoId === item.todoId;
+    }
+    return timerState.taskLabel === item.content;
+  };
 
   // Today's sessions — for the "What you've done" section.
   const todaySessions = useMemo(() => {
@@ -1254,17 +1278,24 @@ function SearchTab({ alreadyPinned, accountId, pending, onRowClick }: SearchTabP
   const [error, setError] = useState<string | null>(null);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
+  // v5.1.4 — Filter `alreadyPinned` at render time, not fetch time. Previously
+  // pinning a todo (or having the picker re-open after a pin) didn't re-filter
+  // the cached `results` — they were filtered once at fetch and stuck that
+  // way until a new query was typed. Now we cache the raw search response and
+  // filter just-in-time, matching the pattern used by every other tab.
   const doSearch = useCallback((q: string) => {
     if (q.length < 2) { setResults([]); return; }
     setLoading(true); setError(null);
     zs.bcSearchTodos(q)
       .then((res) => {
-        if (res.ok) setResults(res.data.filter((r) => !alreadyPinned.has(r.id)));
+        if (res.ok) setResults(res.data);
         else setError(res.error);
       })
       .catch((e: Error) => setError(e.message))
       .finally(() => setLoading(false));
-  }, [alreadyPinned]);
+  }, []);
+
+  const visibleResults = results.filter((r) => !alreadyPinned.has(r.id));
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const q = e.target.value;
@@ -1291,8 +1322,9 @@ function SearchTab({ alreadyPinned, accountId, pending, onRowClick }: SearchTabP
       {query.length < 2 && <TabEmpty label="Type at least 2 characters to search." />}
       {query.length >= 2 && loading && <TabLoading label="Searching…" />}
       {query.length >= 2 && error && <TabError message={error} onRetry={() => doSearch(query)} />}
-      {query.length >= 2 && !loading && !error && results.length === 0 && <TabEmpty label="No matches." />}
-      {results.map((r) => {
+      {query.length >= 2 && !loading && !error && visibleResults.length === 0 && results.length === 0 && <TabEmpty label="No matches." />}
+      {query.length >= 2 && !loading && !error && visibleResults.length === 0 && results.length > 0 && <TabEmpty label="All matches are already pinned." />}
+      {visibleResults.map((r) => {
         const item = searchResultToPinned(r, accountId);
         return (
           <SelectableRow

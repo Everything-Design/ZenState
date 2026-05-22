@@ -2,6 +2,7 @@ import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { User, AvailabilityStatus, DailyRecord, IPC, AppSettings, LicenseState, BasecampAuthState, BasecampCredentials, BasecampProject, BasecampTodoList, BasecampTodo, BasecampTimesheetEntry, TodayPlan, PinnedTodo, RecentTodo, PeerGroup, ReceivedPing } from '../shared/types';
 import DashboardView from './views/DashboardView';
 import LoginView from './views/LoginView';
+import WhatsNewModal from './components/WhatsNewModal';
 
 // Type declaration for the preload bridge
 declare global {
@@ -105,6 +106,10 @@ interface TimerState {
   category?: string;
   targetDuration?: number;
   remaining?: number;
+  // v5.1.4 — Basecamp todoId of the currently-running session (undefined for
+  // non-Basecamp timer sessions). Used by row "running" indicators to
+  // disambiguate when two pinned todos share the same name.
+  basecampTodoId?: number;
 }
 
 export default function DashboardApp() {
@@ -128,6 +133,10 @@ export default function DashboardApp() {
   const [licenseState, setLicenseState] = useState<LicenseState>({ isValid: false, isPro: false, isAdmin: false, payload: null });
   const prevTimerRunning = useRef(false);
   const [loading, setLoading] = useState(true);
+  // v5.1.4 — What's New modal. Shown once per upgrade. `whatsNewHighlight`
+  // is set to the current version's bullets when the user hasn't seen them
+  // yet; dismissing writes the version back to settings so it stays closed.
+  const [whatsNewHighlight, setWhatsNewHighlight] = useState<import('../shared/whatsNew').ReleaseHighlight | null>(null);
 
   useEffect(() => {
     async function init() {
@@ -142,8 +151,39 @@ export default function DashboardApp() {
       const license = await window.zenstate.getLicenseState();
       setLicenseState(license);
       setLoading(false);
+
+      // v5.1.4 — What's-new modal. Show the current version's highlights once
+      // per upgrade. Suppressed on a *fresh install* (no prior user yet) so
+      // first-launch onboarding isn't interrupted; the next upgrade will show
+      // it normally. Only triggered when there's a real version mismatch.
+      try {
+        const [version, settings, { getHighlightForVersion }] = await Promise.all([
+          window.zenstate.getAppVersion(),
+          window.zenstate.getSettings(),
+          import('../shared/whatsNew'),
+        ]);
+        if (user && version && settings.lastSeenWhatsNewVersion !== version) {
+          const highlight = getHighlightForVersion(version);
+          if (highlight) setWhatsNewHighlight(highlight);
+        }
+      } catch (err) {
+        console.warn('[whatsNew] check failed:', err);
+      }
     }
     init();
+  }, []);
+
+  // v5.1.4 — Dismiss callback for the What's New modal. Persists the current
+  // version so the modal stays closed until the next upgrade.
+  const handleDismissWhatsNew = useCallback(async () => {
+    setWhatsNewHighlight(null);
+    try {
+      const version = await window.zenstate.getAppVersion();
+      const settings = await window.zenstate.getSettings();
+      await window.zenstate.saveSettings({ ...settings, lastSeenWhatsNewVersion: version });
+    } catch (err) {
+      console.warn('[whatsNew] dismiss persistence failed:', err);
+    }
   }, []);
 
   // Each on() returns its own unsubscribe so unmount cleanup detaches only
@@ -419,6 +459,10 @@ export default function DashboardApp() {
         onUserUpdate={handleUserUpdate}
         onSignOut={handleSignOut}
       />
+      {/* v5.1.4 — What's New modal (one-shot per upgrade). */}
+      {whatsNewHighlight && (
+        <WhatsNewModal highlight={whatsNewHighlight} onDismiss={handleDismissWhatsNew} />
+      )}
     </>
   );
 }

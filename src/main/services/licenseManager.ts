@@ -1,8 +1,36 @@
 import crypto from 'crypto';
+import fs from 'fs';
+import path from 'path';
 import os from 'os';
 import Store from 'electron-store';
-import { safeStorage } from 'electron';
+import { safeStorage, app } from 'electron';
 import { LicensePayload, LicenseState } from '../../shared/types';
+
+// v5.1.4 — Corrupt-file recovery for the license store. See note in
+// persistence.ts. Same pattern: try-then-quarantine-then-retry.
+function createLicenseStoreWithRecovery() {
+  const opts = {
+    name: 'zenstate-license',
+    defaults: {
+      licenseKey: null as string | null,
+      deviceFingerprint: null as string | null,
+    },
+  };
+  try {
+    return new Store(opts);
+  } catch (err) {
+    try {
+      const file = path.join(app.getPath('userData'), `${opts.name}.json`);
+      if (fs.existsSync(file)) {
+        fs.renameSync(file, `${file}.corrupt-${Date.now()}`);
+        console.warn(`[license] Corrupt store quarantined; reinitialising. Original error:`, err);
+      }
+    } catch (cleanupErr) {
+      console.error('[license] Recovery cleanup failed:', cleanupErr);
+    }
+    return new Store(opts);
+  }
+}
 
 // Wrap the license key on disk with safeStorage (Keychain on mac / DPAPI on
 // Windows). Falls back to plaintext only when the OS keystore is unavailable;
@@ -35,13 +63,7 @@ const PUBLIC_KEY = `-----BEGIN PUBLIC KEY-----
 MCowBQYDK2VwAyEABXgyBC5XyfT9osUW9RChFwHGH7EIgIP03nEX8Ei7lmY=
 -----END PUBLIC KEY-----`;
 
-const licenseStore = new Store({
-  name: 'zenstate-license',
-  defaults: {
-    licenseKey: null as string | null,
-    deviceFingerprint: null as string | null,
-  },
-});
+const licenseStore = createLicenseStoreWithRecovery();
 
 /**
  * Generate a stable device fingerprint from hostname + username + platform + arch.

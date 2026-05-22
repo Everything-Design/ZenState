@@ -148,6 +148,8 @@ contextBridge.exposeInMainWorld('zenstate', {
   updateSession: (sessionId: string, date: string, updates: unknown) => ipcRenderer.invoke(IPC.UPDATE_SESSION, { sessionId, date, updates }),
   addSession: (data: { taskLabel: string; duration: number; startTime: string; notes?: string; basecamp?: { accountId: number; projectId: number; todoId: number; todoListId?: number } | null }) => ipcRenderer.invoke(IPC.ADD_SESSION, data),
   getAppVersion: () => ipcRenderer.invoke('app:get-version'),
+  // v5.1.4 — Open a URL in the system browser (http(s) only; main validates).
+  openExternal: (url: string) => ipcRenderer.invoke('app:open-external', url),
   resetAllData: () => ipcRenderer.invoke('data:reset-all'),
   getCategories: () => ipcRenderer.invoke('data:get-categories'),
   saveCategories: (categories: string[]) => ipcRenderer.invoke('data:save-categories', categories),

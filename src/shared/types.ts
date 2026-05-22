@@ -129,6 +129,11 @@ export interface AppSettings {
   // When true, the floating pill fades to ~50% opacity after a few seconds
   // of no hover, so it stays out of the way without going invisible.
   miniTimerAutoDim: boolean;
+  // v5.1.4 — App version of the last "What's new" dialog the user saw. On
+  // launch the dashboard compares this with the current app.getVersion();
+  // if different (or missing), the modal pops once with that version's
+  // bullets, then writes the current version here.
+  lastSeenWhatsNewVersion?: string;
 }
 
 // ── Basecamp Types ─────────────────────────────────────────────
@@ -175,6 +180,12 @@ export interface PinnedTodo {
   // Toggled from the Plan view; drives midnight rollover (completed items get
   // dropped, unfinished ones carry to the next day).
   completedAt?: string;   // ISO timestamp when the user marked it done
+  // v5.1.4 — Per-task draft notes that survive switching the active timer.
+  // Type a note while timing task A → switch to task B → switch back to A:
+  // the note is restored. Persists across stop/start cycles too (user
+  // explicitly chose persist-not-clear semantics — they treat notes as
+  // ongoing scratch context tied to the task, not to a single session).
+  draftNotes?: string;
 }
 
 export interface TodayPlan {

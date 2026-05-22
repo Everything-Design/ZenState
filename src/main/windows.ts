@@ -31,12 +31,14 @@ export function createPopoverWindow(url: string): BrowserWindow {
     },
   });
 
+  // v5.1.4 — `setAlwaysOnTop('screen-saver')` now applies on BOTH platforms.
+  // Previously this entire block was Mac-only, leaving the popover on Windows
+  // as a plain BrowserWindow with no z-order promotion — it opened behind
+  // fullscreen apps and lost focus instantly. `setVisibleOnAllWorkspaces`
+  // stays Mac-only (it's a no-op on Windows; explicit gate reads cleaner).
+  win.setAlwaysOnTop(true, 'screen-saver');
   if (isMac) {
-    // Show on all spaces and stay visible above full-screen apps.
     win.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
-    // 'screen-saver' is the highest standard window level — keeps the popover
-    // above full-screen app windows, which sit at the 'main-menu' level.
-    win.setAlwaysOnTop(true, 'screen-saver');
   }
 
   win.loadURL(url);
@@ -46,16 +48,30 @@ export function createPopoverWindow(url: string): BrowserWindow {
     win.webContents.openDevTools({ mode: 'detach' });
   }
 
-  // Hide when the user clicks outside, but ignore the spurious blur that
-  // can fire immediately after `show()` while the underlying full-screen
-  // Space is still settling. A short grace window prevents the popover
-  // from instantly disappearing the first time it's opened on top of a
-  // full-screen app. 500ms covers slower Space transitions reliably.
+  // v5.1.4 — Hide-on-blur with three layers of protection:
+  //   1. Grace window after show() — covers macOS Space transitions that
+  //      briefly fire blur during the animation (M-series with Reduce Motion
+  //      off can take up to ~750ms; Intel HiDPI can exceed 1s). Bumped from
+  //      500ms to 800ms based on field reports.
+  //   2. Dashboard-focused exception — if the user clicked into our own
+  //      dashboard window, that's a legitimate focus change. Don't hide; the
+  //      user came from the popover to a related app surface and may come
+  //      back. Without this, the v5.1.1-added "open dashboard on launch"
+  //      could steal focus from a just-shown popover and immediately hide it.
+  //   3. Dev-mode skip — devtools focus would otherwise hide the popover
+  //      mid-debug.
+  const BLUR_GRACE_MS = 800;
   let lastShownAt = 0;
   win.on('show', () => { lastShownAt = Date.now(); });
   win.on('blur', () => {
     if (!require('electron').app.isPackaged) return; // devtools focus in dev
-    if (Date.now() - lastShownAt < 500) return;       // ignore show→blur race
+    if (Date.now() - lastShownAt < BLUR_GRACE_MS) return;
+    // Walk our own BrowserWindows: if the dashboard or mini-timer is now
+    // focused, the user is interacting with our own app — not "outside" —
+    // so don't dismiss the popover.
+    const ownWindows = BrowserWindow.getAllWindows();
+    const focusedIsOwn = ownWindows.some((w) => w !== win && !w.isDestroyed() && w.isFocused());
+    if (focusedIsOwn) return;
     win.hide();
   });
 

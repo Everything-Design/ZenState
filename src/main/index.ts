@@ -1,4 +1,4 @@
-import { app, BrowserWindow, ipcMain, globalShortcut, Notification, nativeImage, dialog, powerMonitor, crashReporter } from 'electron';
+import { app, BrowserWindow, ipcMain, globalShortcut, Notification, nativeImage, dialog, powerMonitor, crashReporter, shell } from 'electron';
 import fs from 'fs';
 import path from 'path';
 import crypto from 'crypto';
@@ -40,9 +40,16 @@ try {
   console.warn('crashReporter.start failed (non-fatal):', err);
 }
 
-// Prevent multiple instances
+// Prevent multiple instances.
+// v5.1.4 — On Windows, if a previous launch crashed hard while holding the
+// named mutex (GPU crash, AV-terminated, power loss), the lock can stick
+// until the OS cleans it up — and every subsequent launch silently exits.
+// We log explicitly so the user at least sees something in the console; the
+// second-instance handler (further down) brings the existing dashboard to
+// front if it's alive.
 const gotTheLock = app.requestSingleInstanceLock();
 if (!gotTheLock) {
+  console.warn('[startup] Could not acquire single-instance lock. Another instance is already running, or a previous crash left the lock unreleased. Quitting.');
   app.quit();
 }
 
@@ -135,8 +142,14 @@ app.on('ready', async () => {
     app.dock?.hide();
   }
 
-  // Create tray with callbacks for context menu actions
-  createTray({
+  // Create tray with callbacks for context menu actions.
+  // v5.1.4 — Wrapped in try/catch because `new Tray(...)` can throw on Windows
+  // when the icon image fails to load (returns an empty NativeImage; new Tray
+  // then throws "Invalid HICON"). createTrayIcon now falls back to a 1×1
+  // transparent PNG to prevent the throw, but if construction still fails
+  // for another reason we surface a dialog instead of dying silently.
+  try {
+    createTray({
     onClick: () => togglePopover(),
     onStatusChange: (status: AvailabilityStatus) => {
       const u = persistence.getUser();
@@ -164,7 +177,15 @@ app.on('ready', async () => {
         dashboardWindow.focus();
       }
     },
-  });
+    });
+  } catch (err) {
+    console.error('[startup] createTray failed:', err);
+    dialog.showErrorBox(
+      'ZenState couldn\'t start',
+      'Could not create the system tray icon. This usually means the install is incomplete or your antivirus has quarantined a file. Try reinstalling ZenState from https://github.com/Everything-Design/ZenState_V3/releases/latest.',
+    );
+    // Don't return — let the app try to continue. The dashboard may still work.
+  }
 
   // Create popover window (hidden initially)
   popoverWindow = createPopoverWindow(getRendererURL('index.html'));
@@ -182,7 +203,16 @@ app.on('ready', async () => {
     const licenseState = licenseManager.getLicenseState();
     user.isAdmin = licenseState.isValid && licenseState.isAdmin;
     persistence.saveUser(user);
-    startNetworking(user);
+    // v5.1.4 — Defensive try/catch. NetworkingService.start() is mostly safe
+    // (net.createServer + Bonjour which is itself try/catch'd internally), but
+    // any throw here would kill the entire ready handler before the dashboard
+    // could open. Peer discovery is a non-essential subsystem — let the app
+    // still boot if it fails.
+    try {
+      startNetworking(user);
+    } catch (err) {
+      console.error('[startup] startNetworking failed; app will run without peer discovery:', err);
+    }
   }
 
   // v5.1.1 — Always open the Dashboard on launch. Previously the app would
@@ -252,7 +282,18 @@ app.on('before-quit', () => {
 });
 
 app.on('second-instance', () => {
-  togglePopover();
+  // v5.1.4 — User double-clicked the app icon while it was already running.
+  // Bring the dashboard to front if it exists (more useful than toggling the
+  // popover, which requires a signed-in user and a tray-positioned context).
+  // Falls back to the popover toggle if the dashboard isn't around — preserves
+  // the prior behaviour for the menu-bar-only flow.
+  if (dashboardWindow && !dashboardWindow.isDestroyed()) {
+    if (dashboardWindow.isMinimized()) dashboardWindow.restore();
+    dashboardWindow.show();
+    dashboardWindow.focus();
+  } else {
+    togglePopover();
+  }
 });
 
 // ── Popover Toggle ─────────────────────────────────────────────
@@ -302,17 +343,25 @@ function togglePopover() {
   const { positionPopover } = require('./tray');
   positionPopover(popoverWindow);
 
-  // Re-assert NSPanel visibility settings on every show — macOS resets
-  // `visibleOnFullScreen` after some Space transitions, which is why the
-  // popover sometimes vanishes (it's on a different Space, not gone).
-  // Setting these right before show() pins it to the *current* Space.
+  // Re-assert window z-order settings on every show.
+  // v5.1.4 — `setAlwaysOnTop` is now ungated; on Windows the popover was a
+  // plain BrowserWindow with no topmost promotion, which meant it opened
+  // BEHIND fullscreen apps. `setVisibleOnAllWorkspaces` stays Mac-only —
+  // macOS resets `visibleOnFullScreen` after some Space transitions, so the
+  // popover otherwise ends up pinned to the previous Space.
+  popoverWindow.setAlwaysOnTop(true, 'screen-saver');
   if (process.platform === 'darwin') {
     popoverWindow.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
-    popoverWindow.setAlwaysOnTop(true, 'screen-saver');
   }
 
   popoverWindow.show();
   popoverWindow.focus();
+  // Windows: force z-order promotion after show. Some Windows compositors
+  // delay applying setAlwaysOnTop until next paint; moveTop() makes it
+  // explicit so the popover lands above other topmost windows immediately.
+  if (process.platform !== 'darwin') {
+    popoverWindow.moveTop();
+  }
   // Nudge the popover renderer to re-fetch its data. Covers two edge cases:
   // (1) midnight rollover happened while the app was idle, so the cached
   //     todayPlan in the renderer is stale.
@@ -387,7 +436,17 @@ function startNetworking(user: User) {
   powerMonitor.on('suspend', () => {
     console.log('System suspending — tearing down local network advertising');
     networking?.prepareForSuspend();
-    autoPauseTimer('suspend');
+    // v5.1.4 — Skip the timer auto-pause when Meeting mode is on. People go
+    // to conference rooms with lids closed; their system sleeps; they don't
+    // want to come back and find the timer stopped. The elapsed counter is
+    // computed from `Date.now() - timerStartTime` which keeps ticking across
+    // sleep automatically (the system clock isn't paused, only the JS event
+    // loop). Meeting mode is the user's explicit signal that this is OK.
+    if (!meetingModeActive) {
+      autoPauseTimer('suspend');
+    } else {
+      console.log('[timer] Meeting mode on — letting timer keep running through sleep');
+    }
   });
 
   powerMonitor.on('resume', () => {
@@ -397,7 +456,11 @@ function startNetworking(user: User) {
   });
 
   powerMonitor.on('lock-screen', () => {
-    autoPauseTimer('lock');
+    // Same Meeting-mode gate — lid not closed, just locked. Common when
+    // walking away briefly for a meeting (Mac/Windows auto-lock).
+    if (!meetingModeActive) {
+      autoPauseTimer('lock');
+    }
   });
 
   powerMonitor.on('unlock-screen', () => {
@@ -502,6 +565,7 @@ function pushTimerStateToMiniTimer() {
     taskLabel: timerTaskLabel,
     category: timerCategory,
     targetDuration: timerTargetDuration,
+    basecampTodoId: timerBasecamp?.todoId,
   });
 }
 
@@ -765,7 +829,18 @@ function startTimer(taskLabel: string, category?: string, targetDuration?: numbe
   timerAccumulatedTime = 0;
   timerIsPaused = false;
   timerIsRunning = true;
-  currentSessionNotes = '';
+  // v5.1.4 — Prefill notes from the pinned todo's draftNotes if there are
+  // any. This is how per-task notes "follow" the task across timer switches:
+  // type a note timing task A → switch to task B → switch back to A and the
+  // note reappears here. draftNotes are written by MINI_TIMER_SET_NOTES and
+  // persist across stop+start (user chose persist-not-clear semantics).
+  if (basecampLink) {
+    const plan = persistence.getTodayPlan();
+    const pinned = plan.items.find((p) => p.todoId === basecampLink.todoId);
+    currentSessionNotes = pinned?.draftNotes ?? '';
+  } else {
+    currentSessionNotes = '';
+  }
   longRunGuardFired = false;
   meetingModeActive = false; // Meeting mode is per-session; reset for a fresh start
   broadcastToWindows(IPC.TIMER_MEETING_MODE_CHANGED, false);
@@ -807,6 +882,7 @@ function startTimer(taskLabel: string, category?: string, targetDuration?: numbe
         category: timerCategory,
         targetDuration: timerTargetDuration,
         remaining,
+        basecampTodoId: timerBasecamp?.todoId,
       });
       // Don't bang-assert the user — sign-out may have just nulled it while
       // the interval was already scheduled. Skip the tray update in that
@@ -942,6 +1018,7 @@ function pauseTimer() {
       category: timerCategory,
       targetDuration: timerTargetDuration,
       remaining,
+      basecampTodoId: timerBasecamp?.todoId,
     });
   }
 }
@@ -1648,6 +1725,25 @@ function setupIPC() {
 
   // App version
   ipcMain.handle('app:get-version', () => app.getVersion());
+
+  // v5.1.4 — Open a URL in the user's default browser. We validate the URL
+  // scheme to http(s) only so a compromised renderer can't pass file:// or
+  // javascript:// URIs to shell.openExternal (which would be a real attack
+  // surface — Electron's shell.openExternal happily accepts any scheme).
+  ipcMain.handle('app:open-external', async (_e, url: string) => {
+    try {
+      const u = new URL(url);
+      if (u.protocol !== 'http:' && u.protocol !== 'https:') {
+        console.warn(`[openExternal] Refusing non-http(s) URL: ${u.protocol}`);
+        return { ok: false, error: 'Only http(s) URLs are allowed' };
+      }
+      await shell.openExternal(url);
+      return { ok: true };
+    } catch (err) {
+      console.warn('[openExternal] failed:', err);
+      return { ok: false, error: (err as Error)?.message ?? 'Failed to open URL' };
+    }
+  });
 
   // Reset all data — wipes everything the app persists locally so the next
   // launch is functionally identical to a fresh install.
@@ -2359,7 +2455,20 @@ function setupIPC() {
   ipcMain.on(IPC.MINI_TIMER_SET_NOTES, (_e, notes: string) => {
     // Cap at a reasonable length — these end up as Basecamp timesheet
     // descriptions, which aren't meant to hold paragraphs.
-    currentSessionNotes = (notes ?? '').slice(0, 500);
+    const trimmed = (notes ?? '').slice(0, 500);
+    currentSessionNotes = trimmed;
+    // v5.1.4 — Also persist to the pinned todo's draftNotes so the note
+    // follows the task. Without this, switching the active timer to a
+    // different pinned todo would lose the in-flight notes for the original.
+    if (timerBasecamp?.todoId) {
+      const plan = persistence.getTodayPlan();
+      const pinned = plan.items.find((p) => p.todoId === timerBasecamp!.todoId);
+      if (pinned) {
+        pinned.draftNotes = trimmed || undefined;
+        persistence.saveTodayPlan(plan);
+        broadcastToWindows(IPC.TODAY_CHANGED, plan);
+      }
+    }
   });
 
   // Manual JS-driven drag for the mini-timer pill. The renderer fires a stream

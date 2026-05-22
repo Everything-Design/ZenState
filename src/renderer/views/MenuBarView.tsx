@@ -20,6 +20,7 @@ interface TimerState {
   category?: string;
   targetDuration?: number;
   remaining?: number;
+  basecampTodoId?: number; // v5.1.4
 }
 
 const REVERT_OPTIONS = [
@@ -560,7 +561,15 @@ export default function MenuBarView({ currentUser, peers, timerState, statusReve
                 the fold; users hate scrolling past struck-through rows to
                 find what's still actionable. */}
             {[...todayPlan.items].sort((a, b) => Number(!!a.completedAt) - Number(!!b.completedAt)).map((p) => {
-              const running = isTimerActive && timerState.taskLabel === p.content;
+              // v5.1.4 — Match by Basecamp todoId when both sides have it;
+              // fall back to label match for non-Basecamp timer sessions.
+              // Without this, two same-name pinned todos both render as
+              // "running" when the timer is on either one of them.
+              const running = isTimerActive && (
+                (timerState.basecampTodoId && p.todoId)
+                  ? timerState.basecampTodoId === p.todoId
+                  : timerState.taskLabel === p.content
+              );
               const isComplete = !!p.completedAt;
               // Don't allow starting a timer on a completed task — the user
               // marked it done, so the Start button is disabled until they
