@@ -1,7 +1,8 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { Settings, Timer, LayoutDashboard, MessageCircle, Hourglass, Pin, Play, Megaphone, X } from 'lucide-react';
-import { User, AvailabilityStatus, IPC, LicenseState, TodayPlan, PinnedTodo, ReceivedPing } from '../../shared/types';
+import { User, AvailabilityStatus, IPC, LicenseState, TodayPlan, PinnedTodo, ReceivedPing, BasecampAuthState } from '../../shared/types';
 import SendPingSheet from '../components/SendPingSheet';
+import NotificationsPanel from '../components/NotificationsPanel';
 
 const STATUS_SUGGESTIONS = ['In a meeting', 'Lunch break', 'Be right back', 'Deep work'];
 const DURATION_OPTIONS = [
@@ -109,6 +110,7 @@ export default function MenuBarView({ currentUser, peers, timerState, statusReve
   const [tabAutoChosen, setTabAutoChosen] = useState(false);
   const [showPingSheet, setShowPingSheet] = useState(false);
   const [recentPings, setRecentPings] = useState<ReceivedPing[]>([]);
+  const [bcConnected, setBcConnected] = useState(false);
 
   // Load Today's plan and stay subscribed to changes so the popover shows
   // pinned to-dos as soon as the user pins/unpins from the Dashboard.
@@ -158,6 +160,17 @@ export default function MenuBarView({ currentUser, peers, timerState, statusReve
       setRecentPings((prev) => prev.length > 0 ? prev : initial);
     }).catch(() => {});
     return off;
+  }, []);
+
+  // Track Basecamp connection for the notifications bell
+  useEffect(() => {
+    window.zenstate.bcGetAuthState().then((state: BasecampAuthState) => {
+      setBcConnected(state.isConnected);
+    }).catch(() => {});
+    return window.zenstate.on(IPC.BC_AUTH_CHANGED, (...args: unknown[]) => {
+      const state = args[0] as BasecampAuthState;
+      setBcConnected(state.isConnected);
+    });
   }, []);
 
   async function dismissPing(id: string) {
@@ -336,7 +349,7 @@ export default function MenuBarView({ currentUser, peers, timerState, statusReve
 
 
   return (
-    <div className="popover">
+    <div className="popover" style={{ position: 'relative' }}>
       {/* User Header */}
       <div className="user-header">
         <div className="avatar" style={{ background: currentUser.avatarColor || '#007AFF' }}>
@@ -845,6 +858,7 @@ export default function MenuBarView({ currentUser, peers, timerState, statusReve
       {/* Footer */}
       <div className="footer">
         <div className="footer-utils">
+          <NotificationsPanel isBasecampConnected={bcConnected} />
           <button className="footer-icon-btn" onClick={() => window.zenstate.openDashboard('settings')} title="Settings">
             <Settings size={15} />
           </button>

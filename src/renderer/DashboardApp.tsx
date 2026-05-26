@@ -1,8 +1,9 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
-import { User, AvailabilityStatus, DailyRecord, IPC, AppSettings, LicenseState, BasecampAuthState, BasecampCredentials, BasecampProject, BasecampTodoList, BasecampTodo, BasecampTimesheetEntry, TodayPlan, PinnedTodo, RecentTodo, PeerGroup, ReceivedPing } from '../shared/types';
+import { User, AvailabilityStatus, DailyRecord, IPC, AppSettings, LicenseState, BasecampAuthState, BasecampCredentials, BasecampProject, BasecampTodoList, BasecampTodo, BasecampTimesheetEntry, BasecampPerson, BasecampNotification, TodayPlan, PinnedTodo, RecentTodo, PeerGroup, ReceivedPing } from '../shared/types';
 import DashboardView from './views/DashboardView';
 import LoginView from './views/LoginView';
 import WhatsNewModal from './components/WhatsNewModal';
+import CheckInModal from './components/CheckInModal';
 
 // Type declaration for the preload bridge
 declare global {
@@ -47,7 +48,7 @@ declare global {
       timerLongRunRespond: (payload: { action: 'continue' | 'stop' | 'backdate'; stopAtIso?: string }) => void;
       timerIdleRespond: (payload: { action: 'continue' | 'pause' | 'backdate'; stopAtIso?: string; enableMeetingMode?: boolean }) => void;
       timerSetMeetingMode: (on: boolean) => void;
-      timerTimesheetConfirm: (payload: { action: 'post' | 'discard'; hours?: string; notes?: string; durationSec?: number }) => void;
+      timerTimesheetConfirm: (payload: { action: 'post' | 'discard'; hours?: string; notes?: string; durationSec?: number; additionalPersonIds?: number[] }) => void;
       miniTimerResize: (size: { width: number; height: number }) => void;
       miniTimerMoveBy: (delta: { dx: number; dy: number }) => void;
       miniTimerGetNotes: () => Promise<string>;
@@ -70,11 +71,21 @@ declare global {
       bcListProjects: () => Promise<{ ok: boolean; data?: BasecampProject[]; error?: string }>;
       bcListTodoLists: (projectId: number, todoSetId: number) => Promise<{ ok: boolean; data?: BasecampTodoList[]; error?: string }>;
       bcListTodos: (projectId: number, todoListId: number) => Promise<{ ok: boolean; data?: BasecampTodo[]; error?: string }>;
-      bcCreateTodo: (data: { projectId: number; todoListId: number; content: string; description?: string; parentId?: number }) => Promise<{ ok: boolean; data?: BasecampTodo; error?: string }>;
+      bcCreateTodo: (data: { projectId: number; todoListId: number; content: string; description?: string; parentId?: number; dueOn?: string }) => Promise<{ ok: boolean; data?: BasecampTodo; error?: string }>;
+      bcListProjectMembers: (projectId: number) => Promise<{ ok: boolean; data?: BasecampPerson[]; error?: string }>;
       bcPostComment: (data: { projectId: number; todoId: number; content: string }) => Promise<{ ok: boolean; error?: string }>;
       bcCreateTimeEntry: (data: { todoId: number; date: string; hours: string; description?: string }) => Promise<{ ok: boolean; data?: BasecampTimesheetEntry; error?: string }>;
       bcGetProjectTimesheet: (projectId: number) => Promise<{ ok: boolean; data?: BasecampTimesheetEntry[]; error?: string }>;
       bcBackfillTimesheet: () => Promise<{ ok: boolean; data?: { migrated: number; failed: number; totalUnsynced: number; groups: number; failures?: string[] }; error?: string }>;
+      // v5.2 — Check-ins
+      bcGetQuestionnaireForProject: (projectId: number) => Promise<unknown>;
+      bcGetQuestions: (projectId: number, questionnaireId: number) => Promise<unknown[]>;
+      bcPostQuestionAnswer: (projectId: number, questionId: number, content: string) => Promise<{ ok: boolean; error?: string }>;
+      // v5.2 — Notifications ("Hey!" panel)
+      bcGetNotifications: () => Promise<{ ok: boolean; data?: { unreads: BasecampNotification[]; reads: BasecampNotification[] }; error?: string }>;
+      bcMarkNotificationRead: (notificationId: number) => Promise<{ ok: boolean; error?: string }>;
+      // Open a URL in the system browser (http/https only).
+      openExternal: (url: string) => Promise<void>;
       todayGet: () => Promise<{ plan: TodayPlan; recents: RecentTodo[] }>;
       todayPin: (item: PinnedTodo) => Promise<TodayPlan>;
       todayUnpin: (todoId: number) => Promise<TodayPlan>;
@@ -137,6 +148,12 @@ export default function DashboardApp() {
   // is set to the current version's bullets when the user hasn't seen them
   // yet; dismissing writes the version back to settings so it stays closed.
   const [whatsNewHighlight, setWhatsNewHighlight] = useState<import('../shared/whatsNew').ReleaseHighlight | null>(null);
+  // v5.2 — Daily check-in modal. Fired by main at 9:05am on weekdays when
+  // the user hasn't already answered/dismissed today's check-in.
+  const [checkInOpen, setCheckInOpen] = useState(false);
+  const [checkInDate, setCheckInDate] = useState('');
+  // v5.2 — Toast for multi-person timesheet result (extra-people-result IPC).
+  const [extraPeopleToast, setExtraPeopleToast] = useState<{ message: string; isError: boolean } | null>(null);
 
   useEffect(() => {
     async function init() {
@@ -272,6 +289,29 @@ export default function DashboardApp() {
         window.zenstate.getRecords().then((rs) => {
           setRecords(rs as DailyRecord[]);
         }).catch(() => {});
+      }),
+      // v5.2 — Daily check-in prompt from main (9:05am weekdays).
+      window.zenstate.on(IPC.CHECKIN_PROMPT, (data: unknown) => {
+        const payload = data as { date: string };
+        setCheckInDate(payload?.date ?? '');
+        setCheckInOpen(true);
+      }),
+      // v5.2 — Multi-person timesheet result: show a brief toast summarising
+      // how many teammate entries succeeded and who was skipped.
+      window.zenstate.on('basecamp:timesheet-extra-people-result', (data: unknown) => {
+        const result = data as { succeeded: number[]; failed: { personId: number; message: string }[] };
+        const nOk = result.succeeded?.length ?? 0;
+        const nFail = result.failed?.length ?? 0;
+        let message = '';
+        if (nOk > 0 && nFail === 0) {
+          message = `Time logged for ${nOk} teammate${nOk > 1 ? 's' : ''}.`;
+        } else if (nOk > 0 && nFail > 0) {
+          message = `Time logged for ${nOk} teammate${nOk > 1 ? 's' : ''}; ${nFail} skipped (insufficient permission).`;
+        } else {
+          message = `Could not log time for ${nFail} teammate${nFail > 1 ? 's' : ''} — insufficient permission.`;
+        }
+        setExtraPeopleToast({ message, isError: nFail > 0 && nOk === 0 });
+        setTimeout(() => setExtraPeopleToast(null), 5000);
       }),
     ];
     return () => { offs.forEach((off) => off()); };
@@ -462,6 +502,33 @@ export default function DashboardApp() {
       {/* v5.1.4 — What's New modal (one-shot per upgrade). */}
       {whatsNewHighlight && (
         <WhatsNewModal highlight={whatsNewHighlight} onDismiss={handleDismissWhatsNew} />
+      )}
+      {/* v5.2 — Daily Basecamp check-in modal (9:05am weekdays). */}
+      <CheckInModal
+        open={checkInOpen}
+        date={checkInDate}
+        onClose={() => setCheckInOpen(false)}
+      />
+      {/* v5.2 — Multi-person timesheet result toast. Auto-dismisses after 5s. */}
+      {extraPeopleToast && (
+        <div style={{
+          position: 'fixed',
+          bottom: 20,
+          left: '50%',
+          transform: 'translateX(-50%)',
+          zIndex: 300,
+          background: extraPeopleToast.isError ? 'var(--status-focused, #e74c3c)' : 'var(--status-available, #2ecc71)',
+          color: 'white',
+          padding: '10px 20px',
+          borderRadius: 8,
+          fontSize: 13,
+          fontWeight: 500,
+          boxShadow: '0 4px 16px rgba(0,0,0,0.25)',
+          maxWidth: 360,
+          textAlign: 'center',
+        }}>
+          {extraPeopleToast.message}
+        </div>
       )}
     </>
   );

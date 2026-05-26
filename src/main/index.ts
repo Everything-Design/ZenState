@@ -232,7 +232,47 @@ app.on('ready', async () => {
   if (!isDev()) {
     setupUpdater();
   }
+
+  // v5.2 — Daily check-in scheduler. Fires every minute (cheap); broadcasts
+  // CHECKIN_PROMPT when ALL of the following are true:
+  //   • Current local time is in the 9:05am - 9:30am window (giving Basecamp
+  //     5 minutes to actually post the question after their 9am cron, plus a
+  //     reasonable window for the user to be at their machine)
+  //   • Today is Mon-Fri (weekday-only by default)
+  //   • settings.checkInPromptEnabled !== false (default ON)
+  //   • settings.lastCheckInDate !== today (avoid re-firing once answered/dismissed)
+  //   • A user is signed in and Basecamp is connected
+  startCheckInScheduler();
 });
+
+function startCheckInScheduler() {
+  setInterval(() => {
+    try {
+      const now = new Date();
+      const hour = now.getHours();
+      const minute = now.getMinutes();
+      const day = now.getDay(); // 0=Sun, 6=Sat
+      // Weekday 9:05am - 9:30am window
+      if (day === 0 || day === 6) return;
+      if (hour !== 9) return;
+      if (minute < 5 || minute > 30) return;
+      // Don't double-fire same day
+      const todayStr = isoDateLocal(now);
+      const settings = persistence.getSettings();
+      if (settings.checkInPromptEnabled === false) return;
+      if (settings.lastCheckInDate === todayStr) return;
+      // Require signed-in user + Basecamp connection
+      if (!persistence.getUser()) return;
+      if (!basecamp.oauth.isConnected()) return;
+      // Mark today as prompted BEFORE broadcasting so we don't repeat within
+      // the same minute window even if the renderer is slow to respond.
+      persistence.saveSettings({ ...settings, lastCheckInDate: todayStr });
+      broadcastToWindows(IPC.CHECKIN_PROMPT, { date: todayStr });
+    } catch (err) {
+      console.warn('[checkin] scheduler tick failed:', err);
+    }
+  }, 60 * 1000);
+}
 
 app.on('window-all-closed', () => {
   // Don't quit — menu bar app. Do nothing.
@@ -944,7 +984,7 @@ function showLongRunAlert(elapsedSeconds: number) {
   });
 }
 
-function showTimesheetConfirmAlert(taskLabel: string, durationSec: number, notes?: string) {
+function showTimesheetConfirmAlert(taskLabel: string, durationSec: number, notes?: string, projectId?: number) {
   const alertWin = createAlertWindow(getRendererURL('alert.html'), {
     width: 400,
     height: 460,
@@ -959,6 +999,8 @@ function showTimesheetConfirmAlert(taskLabel: string, durationSec: number, notes
     // this into TimesheetConfirmPanel's `defaultNotes` so the user doesn't
     // have to retype what they jotted down mid-session.
     message: notes,
+    // v5.2 — projectId is needed by the multi-person picker in the alert.
+    projectId,
   });
   // If the user dismisses the alert with Cmd+W / Alt+F4 / system X without
   // picking Post or Discard, the local session was already saved with
@@ -1090,7 +1132,7 @@ function stopTimer() {
         taskLabel: capturedTaskLabel,
         durationSec: totalDuration,
       };
-      showTimesheetConfirmAlert(capturedTaskLabel, totalDuration, capturedNotes);
+      showTimesheetConfirmAlert(capturedTaskLabel, totalDuration, capturedNotes, link.projectId);
     } else {
       const hours = (totalDuration / 3600).toFixed(2);
       const date = isoDateLocal(new Date());
@@ -1231,7 +1273,7 @@ function setupIPC() {
   // chosen action (post or discard) plus an optional edited hours value.
   // - post:    create the entry, mark the local session synced, refresh badges
   // - discard: leave the local session unsynced; the user can backfill later
-  ipcMain.on(IPC.TIMER_TIMESHEET_CONFIRM, async (_e, payload: { action: 'post' | 'discard'; hours?: string; notes?: string; durationSec?: number }) => {
+  ipcMain.on(IPC.TIMER_TIMESHEET_CONFIRM, async (_e, payload: { action: 'post' | 'discard'; hours?: string; notes?: string; durationSec?: number; additionalPersonIds?: number[] }) => {
     const pending = pendingTimesheetEntry;
     if (!pending) return;
     pendingTimesheetEntry = null;
@@ -1291,6 +1333,41 @@ function setupIPC() {
         }
       }
       broadcastToWindows('basecamp:timesheet-updated', { projectId: link.projectId, todoId: link.todoId });
+
+      // v5.2 — Multi-person time entries (Path A). After the user's own entry
+      // posts successfully, also create entries for each selected teammate.
+      // Each post is independent — a 403 on one (insufficient permissions to
+      // log for that person) doesn't block the others. Failures are reported
+      // back to the popover via the timesheet-extra-people-result broadcast
+      // for a toast summary.
+      const additionalPersonIds = (payload.additionalPersonIds ?? []).filter((id) => Number.isFinite(id) && id > 0);
+      if (additionalPersonIds.length > 0) {
+        const succeeded: number[] = [];
+        const failed: { personId: number; message: string }[] = [];
+        await Promise.all(additionalPersonIds.map(async (personId) => {
+          try {
+            await basecamp.api.createTimesheetEntry({
+              todoId: link.todoId,
+              date,
+              hours,
+              description,
+              personId,
+            });
+            succeeded.push(personId);
+          } catch (err) {
+            failed.push({
+              personId,
+              message: (err as Error)?.message ?? 'Failed to post time entry',
+            });
+          }
+        }));
+        broadcastToWindows('basecamp:timesheet-extra-people-result', {
+          projectId: link.projectId,
+          todoId: link.todoId,
+          succeeded,
+          failed,
+        });
+      }
     } catch (err) {
       // B-2 fix: surface the failure via a broadcast so the popover/dashboard
       // can show a toast. The alert window has already closed by this point,
@@ -2064,7 +2141,7 @@ function setupIPC() {
       return { ok: false, error: describeError(err, 'listTodos') };
     }
   });
-  ipcMain.handle(IPC.BC_CREATE_TODO, async (_e, data: { projectId: number; todoListId: number; content: string; description?: string; parentId?: number }) => {
+  ipcMain.handle(IPC.BC_CREATE_TODO, async (_e, data: { projectId: number; todoListId: number; content: string; description?: string; parentId?: number; dueOn?: string }) => {
     try {
       return { ok: true, data: await basecamp.api.createTodo(data) };
     } catch (err) {
@@ -2136,6 +2213,63 @@ function setupIPC() {
       return { ok: true, data: await basecamp.api.searchTodos(q) };
     } catch (err) {
       return { ok: false, error: describeError(err, 'searchTodos') };
+    }
+  });
+
+  // v5.2 — Project members. Used by the multi-person time-entry picker in
+  // the "Review before posting" popup. Filters to non-clients who can have
+  // timesheet entries posted for them.
+  ipcMain.handle(IPC.BC_LIST_PROJECT_MEMBERS, async (_e, data: { projectId: number }) => {
+    try {
+      const people = await basecamp.api.listProjectMembers(data.projectId);
+      return { ok: true, data: people.filter((p) => !p.client && p.canAccessTimesheet) };
+    } catch (err) {
+      return { ok: false, error: describeError(err, 'listProjectMembers') };
+    }
+  });
+
+  // v5.2 — Automatic check-ins discovery + answer-posting flow.
+  ipcMain.handle(IPC.BC_LIST_QUESTIONNAIRES, async (_e, data: { projectId: number }) => {
+    try {
+      const q = await basecamp.api.getQuestionnaireForProject(data.projectId);
+      return { ok: true, data: q };
+    } catch (err) {
+      return { ok: false, error: describeError(err, 'getQuestionnaireForProject') };
+    }
+  });
+  ipcMain.handle(IPC.BC_GET_QUESTIONS, async (_e, data: { projectId: number; questionnaireId: number }) => {
+    try {
+      return { ok: true, data: await basecamp.api.listQuestions(data.projectId, data.questionnaireId) };
+    } catch (err) {
+      return { ok: false, error: describeError(err, 'listQuestions') };
+    }
+  });
+  ipcMain.handle(IPC.BC_POST_QUESTION_ANSWER, async (_e, data: { projectId: number; questionId: number; content: string }) => {
+    try {
+      await basecamp.api.postQuestionAnswer(data.projectId, data.questionId, data.content);
+      // Mark today so the scheduler doesn't re-prompt.
+      const settings = persistence.getSettings();
+      persistence.saveSettings({ ...settings, lastCheckInDate: isoDateLocal(new Date()) });
+      return { ok: true };
+    } catch (err) {
+      return { ok: false, error: describeError(err, 'postQuestionAnswer') };
+    }
+  });
+
+  // v5.2 — Notifications ("Hey!" replacement).
+  ipcMain.handle(IPC.BC_GET_NOTIFICATIONS, async () => {
+    try {
+      return { ok: true, data: await basecamp.api.getNotifications() };
+    } catch (err) {
+      return { ok: false, error: describeError(err, 'getNotifications') };
+    }
+  });
+  ipcMain.handle(IPC.BC_MARK_NOTIFICATION_READ, async (_e, data: { notificationId: number }) => {
+    try {
+      await basecamp.api.markNotificationRead(data.notificationId);
+      return { ok: true };
+    } catch (err) {
+      return { ok: false, error: describeError(err, 'markNotificationRead') };
     }
   });
 

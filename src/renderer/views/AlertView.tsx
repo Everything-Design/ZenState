@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 
 interface Props {
   type: 'meetingRequest' | 'emergencyRequest' | 'meetingResponse' | 'timerComplete' | 'breakReminder' | 'longRunGuard' | 'timesheetConfirm' | 'idlePrompt';
@@ -13,7 +13,9 @@ interface Props {
   onDismiss: () => void;
   onLongRunResponse?: (action: 'continue' | 'stop' | 'backdate', stopAtIso?: string) => void;
   onIdleResponse?: (action: 'continue' | 'pause' | 'backdate', stopAtIso?: string, enableMeetingMode?: boolean) => void;
-  onTimesheetConfirm?: (action: 'post' | 'discard', hours?: string, notes?: string, durationSec?: number) => void;
+  onTimesheetConfirm?: (action: 'post' | 'discard', hours?: string, notes?: string, durationSec?: number, additionalPersonIds?: number[]) => void;
+  // v5.2 — project id passed through so TimesheetConfirmPanel can fetch members.
+  timesheetProjectId?: number;
 }
 
 const QUICK_REPLIES = ['Give me 5 mins', 'Free after lunch', "Let's do tomorrow"];
@@ -26,7 +28,7 @@ function formatAlertDuration(seconds: number): string {
   return `${m}m`;
 }
 
-export default function AlertView({ type, from, senderId, message, accepted, targetDuration, elapsedSeconds, lastActivityAt, onRespond, onDismiss, onLongRunResponse, onIdleResponse, onTimesheetConfirm }: Props) {
+export default function AlertView({ type, from, senderId, message, accepted, targetDuration, elapsedSeconds, lastActivityAt, onRespond, onDismiss, onLongRunResponse, onIdleResponse, onTimesheetConfirm, timesheetProjectId }: Props) {
   const [replyText, setReplyText] = useState('');
   const [selectedQuickReply, setSelectedQuickReply] = useState<string | null>(null);
   const isEmergency = type === 'emergencyRequest';
@@ -199,7 +201,8 @@ export default function AlertView({ type, from, senderId, message, accepted, tar
       seconds={seconds}
       defaultHours={exactHours}
       defaultNotes={message ?? ''}
-      onConfirm={(hours, notes, durationSec) => { onTimesheetConfirm?.('post', hours, notes, durationSec); onDismiss(); }}
+      projectId={timesheetProjectId}
+      onConfirm={(hours, notes, durationSec, additionalPersonIds) => { onTimesheetConfirm?.('post', hours, notes, durationSec, additionalPersonIds); onDismiss(); }}
       onDiscard={() => { onTimesheetConfirm?.('discard'); onDismiss(); }}
     />;
   }
@@ -395,15 +398,23 @@ export default function AlertView({ type, from, senderId, message, accepted, tar
   );
 }
 
+interface BasecampMember {
+  id: number;
+  name: string;
+  emailAddress: string;
+  avatarUrl?: string;
+}
+
 // Pre-flight timesheet confirmation. The user reviews the duration (rounded to
 // the nearest 15 min by default), can edit it as a decimal-hours value, and
 // chooses Post or Discard. Nothing reaches Basecamp until they click Post.
-function TimesheetConfirmPanel({ taskLabel, seconds, defaultHours, defaultNotes, onConfirm, onDiscard }: {
+function TimesheetConfirmPanel({ taskLabel, seconds, defaultHours, defaultNotes, projectId, onConfirm, onDiscard }: {
   taskLabel: string;
   seconds: number;
   defaultHours: string;
   defaultNotes: string;
-  onConfirm: (hours: string, notes: string, durationSec: number) => void;
+  projectId?: number;
+  onConfirm: (hours: string, notes: string, durationSec: number, additionalPersonIds: number[]) => void;
   onDiscard: () => void;
 }) {
   // Display the tracked time in the same h/m format used everywhere else in
@@ -416,6 +427,22 @@ function TimesheetConfirmPanel({ taskLabel, seconds, defaultHours, defaultNotes,
   const [editH, setEditH] = useState(initialH);
   const [editM, setEditM] = useState(initialM);
   const [notes, setNotes] = useState(defaultNotes);
+  // v5.2 — multi-person picker state
+  const [pickerOpen, setPickerOpen] = useState(false);
+  const [members, setMembers] = useState<BasecampMember[]>([]);
+  const [membersLoading, setMembersLoading] = useState(false);
+  const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
+
+  // Fetch project members when the picker is first expanded.
+  useEffect(() => {
+    if (!pickerOpen || !projectId || members.length > 0) return;
+    setMembersLoading(true);
+    (window.zenstate as unknown as { bcListProjectMembers: (id: number) => Promise<{ ok: boolean; data?: BasecampMember[]; error?: string }> })
+      .bcListProjectMembers(projectId)
+      .then((res) => { if (res.ok && res.data) setMembers(res.data.filter((m) => !(m as unknown as { client?: boolean }).client)); })
+      .catch(() => {})
+      .finally(() => setMembersLoading(false));
+  }, [pickerOpen, projectId, members.length]);
 
   // Convert the user's h+m back to the decimal hours Basecamp expects.
   // Two decimal places matches the precision of the original `defaultHours`
@@ -515,14 +542,206 @@ function TimesheetConfirmPanel({ taskLabel, seconds, defaultHours, defaultNotes,
         }}
         onKeyDown={(e) => {
           if (e.key === 'Enter' && (e.metaKey || e.ctrlKey) && isValid) {
-            onConfirm(decimalHours, notes.trim(), totalSeconds);
+            onConfirm(decimalHours, notes.trim(), totalSeconds, Array.from(selectedIds));
           }
         }}
       />
 
-      <div style={{ fontSize: 10, color: 'var(--zen-tertiary-text)', textAlign: 'center', marginBottom: 14, lineHeight: 1.5 }}>
+      <div style={{ fontSize: 10, color: 'var(--zen-tertiary-text)', textAlign: 'center', marginBottom: 10, lineHeight: 1.5 }}>
         Notes appear next to your hours on Basecamp's timesheet. Cmd/Ctrl+Enter to post.
       </div>
+
+      {/* v5.2 — Multi-person picker */}
+      {projectId && (
+        <div style={{ marginBottom: 12 }}>
+          {/* v5.2.0+ — The "+ Also log for…" button always shows on the main
+              panel. Clicking opens a modal overlay (rendered separately below)
+              so the picker no longer eats vertical space and pushes the
+              Post/Discard buttons off-screen. */}
+          <button
+            onClick={() => setPickerOpen(true)}
+            style={{
+              background: 'none',
+              border: 'none',
+              color: selectedIds.size > 0 ? 'var(--zen-primary)' : 'var(--zen-secondary-text)',
+              fontSize: 11,
+              cursor: 'pointer',
+              padding: 0,
+              textDecoration: 'underline',
+              fontFamily: 'inherit',
+            }}
+          >
+            {selectedIds.size > 0
+              ? `+ Also logging for ${selectedIds.size} teammate${selectedIds.size > 1 ? 's' : ''} — edit`
+              : '+ Also log for…'}
+          </button>
+        </div>
+      )}
+
+      {/* Modal sub-popup for picking teammates. Covers the whole alert window
+          via position: fixed; backdrop click + Esc + Done button all close it.
+          The main panel's Post/Discard buttons stay reachable underneath. */}
+      {projectId && pickerOpen && (
+        <div
+          onClick={() => setPickerOpen(false)}
+          style={{
+            position: 'fixed',
+            inset: 0,
+            background: 'rgba(0, 0, 0, 0.55)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            zIndex: 1000,
+            padding: 16,
+          }}
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            style={{
+              width: '100%',
+              maxWidth: 360,
+              maxHeight: '85vh',
+              background: 'var(--zen-bg, #1c1c1e)',
+              border: '1px solid var(--zen-divider)',
+              borderRadius: 10,
+              display: 'flex',
+              flexDirection: 'column',
+              overflow: 'hidden',
+              boxShadow: '0 8px 32px rgba(0, 0, 0, 0.5)',
+            }}
+          >
+            {/* Header */}
+            <div style={{
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              padding: '10px 14px',
+              borderBottom: '1px solid var(--zen-divider)',
+              flexShrink: 0,
+            }}>
+              <span style={{ fontSize: 13, color: 'var(--zen-text)', fontWeight: 600 }}>
+                Also log for
+              </span>
+              <button
+                onClick={() => setPickerOpen(false)}
+                title="Close"
+                style={{
+                  background: 'none',
+                  border: 'none',
+                  color: 'var(--zen-tertiary-text)',
+                  fontSize: 14,
+                  cursor: 'pointer',
+                  padding: '4px 8px',
+                  fontFamily: 'inherit',
+                  borderRadius: 4,
+                  lineHeight: 1,
+                }}
+                onMouseEnter={(e) => { (e.currentTarget as HTMLButtonElement).style.color = 'var(--zen-text)'; }}
+                onMouseLeave={(e) => { (e.currentTarget as HTMLButtonElement).style.color = 'var(--zen-tertiary-text)'; }}
+              >
+                ✕
+              </button>
+            </div>
+
+            {/* Scrollable list */}
+            <div style={{ overflowY: 'auto', overflowX: 'hidden', flex: 1, minHeight: 0 }}>
+              {membersLoading && (
+                <div style={{ padding: '14px', fontSize: 12, color: 'var(--zen-tertiary-text)', textAlign: 'center' }}>
+                  Loading teammates…
+                </div>
+              )}
+              {!membersLoading && members.length === 0 && (
+                <div style={{ padding: '14px', fontSize: 12, color: 'var(--zen-tertiary-text)', textAlign: 'center' }}>
+                  No teammates found on this project.
+                </div>
+              )}
+              {!membersLoading && members.map((member) => {
+                const checked = selectedIds.has(member.id);
+                const initial = member.name.charAt(0).toUpperCase();
+                return (
+                  <label
+                    key={member.id}
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: 10,
+                      padding: '9px 14px',
+                      cursor: 'pointer',
+                      borderBottom: '1px solid var(--zen-divider)',
+                      background: checked ? 'rgba(0, 122, 255, 0.08)' : 'transparent',
+                      transition: 'background var(--duration-quick) var(--ease-standard)',
+                    }}
+                  >
+                    <input
+                      type="checkbox"
+                      checked={checked}
+                      onChange={() => {
+                        setSelectedIds((prev) => {
+                          const next = new Set(prev);
+                          if (next.has(member.id)) next.delete(member.id);
+                          else next.add(member.id);
+                          return next;
+                        });
+                      }}
+                      style={{ flexShrink: 0 }}
+                    />
+                    {member.avatarUrl ? (
+                      <img
+                        src={member.avatarUrl}
+                        alt={member.name}
+                        style={{ width: 28, height: 28, borderRadius: '50%', flexShrink: 0, objectFit: 'cover' }}
+                      />
+                    ) : (
+                      <div style={{
+                        width: 28, height: 28, borderRadius: '50%', flexShrink: 0,
+                        background: 'var(--zen-primary)', color: 'white',
+                        display: 'flex', alignItems: 'center', justifyContent: 'center',
+                        fontSize: 12, fontWeight: 600,
+                      }}>
+                        {initial}
+                      </div>
+                    )}
+                    <div style={{ minWidth: 0, flex: 1 }}>
+                      <div style={{ fontSize: 13, color: 'var(--zen-text)', fontWeight: 500, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                        {member.name}
+                      </div>
+                      <div style={{ fontSize: 11, color: 'var(--zen-tertiary-text)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                        {member.emailAddress}
+                      </div>
+                    </div>
+                  </label>
+                );
+              })}
+            </div>
+
+            {/* Footer: count + Done button */}
+            {!membersLoading && members.length > 0 && (
+              <div style={{
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                gap: 10,
+                padding: '10px 14px',
+                borderTop: '1px solid var(--zen-divider)',
+                flexShrink: 0,
+                background: 'var(--zen-tertiary-bg)',
+              }}>
+                <span style={{ fontSize: 11, color: 'var(--zen-tertiary-text)', lineHeight: 1.4, flex: 1, minWidth: 0 }}>
+                  {selectedIds.size > 0 ? `${selectedIds.size} selected` : 'None selected'} — requires admin permission. We&apos;ll skip silently if any can&apos;t be logged.
+                </span>
+                <button
+                  className="btn btn-primary"
+                  onClick={() => setPickerOpen(false)}
+                  style={{ padding: '6px 14px', fontSize: 12, whiteSpace: 'nowrap' }}
+                >
+                  Done
+                </button>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
       <div style={{ display: 'flex', gap: 8 }}>
         <button
           className="btn btn-secondary"
@@ -534,7 +753,7 @@ function TimesheetConfirmPanel({ taskLabel, seconds, defaultHours, defaultNotes,
         <button
           className="btn btn-primary"
           style={{ flex: 2 }}
-          onClick={() => onConfirm(decimalHours, notes.trim(), totalSeconds)}
+          onClick={() => onConfirm(decimalHours, notes.trim(), totalSeconds, Array.from(selectedIds))}
           disabled={!isValid}
         >
           Post {isValid ? `${decimalHours} hr` : ''}

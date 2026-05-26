@@ -4,6 +4,7 @@ import { User, AppSettings, LicenseState, BasecampAuthState, BasecampCredentials
 import { ProBadge, ProGate } from '../../components/ProGate';
 import LicenseActivationModal from '../../components/LicenseActivationModal';
 import NetworkTab from './NetworkTab';
+import Toast, { useToast } from '../../components/Toast';
 
 // Avatar colors — no green/orange/red (reserved for status indicators)
 const COLOR_OPTIONS = ['#007AFF', '#5856D6', '#AF52DE', '#FF2D55', '#00C7BE', '#5AC8FA', '#BF5AF2', '#A2845E'];
@@ -78,8 +79,7 @@ export default function SettingsTab({ currentUser, peers, isPro, licenseState, o
     miniTimerAutoDim: false,
   });
 
-  // Admin notifications
-
+  const { toasts, addToast, dismiss } = useToast();
 
   const [showLicenseModal, setShowLicenseModal] = useState(false);
   const isAdmin = currentUser.isAdmin === true;
@@ -960,6 +960,76 @@ export default function SettingsTab({ currentUser, peers, isPro, licenseState, o
                 </div>
               )}
 
+              {/* Basecamp prompts */}
+              <div style={{
+                padding: '12px 16px',
+                borderRadius: 10,
+                background: 'var(--zen-tertiary-bg)',
+                border: '1px solid var(--zen-divider)',
+                marginBottom: 12,
+              }}>
+                <div style={{ fontSize: 12, fontWeight: 600, marginBottom: 4 }}>Basecamp prompts</div>
+                <div style={{ fontSize: 11, color: 'var(--zen-secondary-text)', lineHeight: 1.5, marginBottom: 12 }}>
+                  ZenState can auto-draft your daily check-in and surface Basecamp notifications inline. Turn these off if you prefer to manage them in Basecamp directly.
+                </div>
+
+                {/* Daily check-in toggle */}
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
+                  <span style={{ fontSize: 13, flex: 1 }}>Daily check-in prompt</span>
+                  <button
+                    onClick={() => {
+                      const newValue = !(appSettings.checkInPromptEnabled !== false);
+                      updateAppSettings({ checkInPromptEnabled: newValue });
+                      addToast('success', newValue ? 'Daily check-in prompt enabled.' : 'Daily check-in prompt disabled.');
+                    }}
+                    style={{
+                      width: 44, height: 24, borderRadius: 12, border: 'none',
+                      background: appSettings.checkInPromptEnabled !== false ? 'var(--zen-primary)' : 'var(--zen-secondary-bg)',
+                      cursor: 'pointer', position: 'relative', transition: 'background 0.2s ease',
+                    }}
+                  >
+                    <div style={{
+                      width: 20, height: 20, borderRadius: '50%', background: 'white',
+                      position: 'absolute', top: 2,
+                      left: appSettings.checkInPromptEnabled !== false ? 22 : 2,
+                      transition: 'left 0.2s ease',
+                      boxShadow: '0 1px 3px rgba(0,0,0,0.3)',
+                    }} />
+                  </button>
+                </div>
+                <div style={{ fontSize: 10, color: 'var(--zen-tertiary-text)', marginBottom: 12 }}>
+                  Show a 9am weekday prompt to post your Basecamp check-in. Auto-drafts from your Today plan.
+                </div>
+
+                {/* Notifications poll toggle */}
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
+                  <span style={{ fontSize: 13, flex: 1 }}>Basecamp notifications</span>
+                  <button
+                    onClick={() => {
+                      const newValue = !(appSettings.notificationsEnabled !== false);
+                      updateAppSettings({ notificationsEnabled: newValue });
+                      addToast('success', newValue ? 'Basecamp notifications enabled.' : 'Basecamp notifications disabled.');
+                    }}
+                    style={{
+                      width: 44, height: 24, borderRadius: 12, border: 'none',
+                      background: appSettings.notificationsEnabled !== false ? 'var(--zen-primary)' : 'var(--zen-secondary-bg)',
+                      cursor: 'pointer', position: 'relative', transition: 'background 0.2s ease',
+                    }}
+                  >
+                    <div style={{
+                      width: 20, height: 20, borderRadius: '50%', background: 'white',
+                      position: 'absolute', top: 2,
+                      left: appSettings.notificationsEnabled !== false ? 22 : 2,
+                      transition: 'left 0.2s ease',
+                      boxShadow: '0 1px 3px rgba(0,0,0,0.3)',
+                    }} />
+                  </button>
+                </div>
+                <div style={{ fontSize: 10, color: 'var(--zen-tertiary-text)' }}>
+                  Show Basecamp's 'Hey!' notifications inline in the popover. Polls every 5 minutes.
+                </div>
+              </div>
+
               <button className="btn btn-danger" style={{ width: '100%' }} onClick={handleBcDisconnect}>
                 Disconnect
               </button>
@@ -1203,6 +1273,8 @@ export default function SettingsTab({ currentUser, peers, isPro, licenseState, o
 
         </>
       )}
+
+      <Toast toasts={toasts} onDismiss={dismiss} />
     </div>
   );
 }

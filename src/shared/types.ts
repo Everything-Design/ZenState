@@ -134,6 +134,15 @@ export interface AppSettings {
   // if different (or missing), the modal pops once with that version's
   // bullets, then writes the current version here.
   lastSeenWhatsNewVersion?: string;
+  // v5.2 — Per-feature opt-outs. Default behaviour for both is ON; user can
+  // disable in Settings if they don't want the daily prompts / notification
+  // polling.
+  checkInPromptEnabled?: boolean;  // 9am auto-draft for Basecamp check-ins
+  notificationsEnabled?: boolean;  // poll /my/readings.json for the Hey panel
+  // v5.2 — Last date (YYYY-MM-DD) the user dismissed the check-in prompt for.
+  // We use this to avoid re-firing the prompt the same day after the user
+  // already answered or explicitly skipped.
+  lastCheckInDate?: string;
 }
 
 // ── Basecamp Types ─────────────────────────────────────────────
@@ -274,6 +283,70 @@ export type MyAssignmentsDueScope =
   | 'due_later_this_week'
   | 'due_next_week'
   | 'due_later';
+
+// v5.2 — A Basecamp person on a project. Used by the multi-person time-entry
+// picker on the "Review before posting" popup. `canAccessTimesheet` gates who
+// can have time entries posted for them; `admin` decides whether the current
+// user is *allowed* to post for others (Basecamp returns 403 otherwise — we
+// handle that gracefully per-person).
+export interface BasecampPerson {
+  id: number;
+  name: string;
+  emailAddress: string;
+  avatarUrl?: string;
+  title?: string;
+  admin: boolean;
+  client: boolean;
+  canAccessTimesheet: boolean;
+}
+
+// v5.2 — A Basecamp automatic-check-ins questionnaire on a project. One per
+// project; contains multiple questions ("What will you work on today?" etc).
+export interface BasecampQuestionnaire {
+  id: number;
+  title: string;
+  url: string;
+  appUrl: string;
+}
+
+// v5.2 — A single check-in question. Schedule + active flag determine when
+// it's prompted to users.
+export interface BasecampQuestion {
+  id: number;
+  title: string;       // the question text e.g. "What will you work on today?"
+  url: string;
+  appUrl: string;
+  scheduleDays?: string[]; // ['monday', 'tuesday', ...] when the question fires
+  paused: boolean;     // when true, the question is not currently being asked
+}
+
+// v5.2 — One person's answer to a question (one check-in response).
+export interface BasecampQuestionAnswer {
+  id: number;
+  content: string;
+  createdAt: string;
+  creator: { id: number; name: string };
+}
+
+// v5.2 — One notification from /my/readings.json. Powers the "Hey!"
+// replacement badge + panel in the popover. Field names map to Basecamp's
+// flat shape — `bucket_name` is a plain string, not a nested object.
+export interface BasecampNotification {
+  id: number;
+  section: 'inbox' | 'chats' | 'pings' | 'remembered' | 'mentions';
+  title: string;       // the readable's title (e.g. "Kickoff meeting notes")
+  excerpt?: string;    // content_excerpt — first paragraph of the readable
+  recordingType?: string;  // type field — 'Recording', 'Event', etc.
+  appUrl: string;      // basecamp.com URL to open the source item
+  createdAt: string;
+  bucketName?: string; // the project name (Basecamp's `bucket_name`)
+  creatorName?: string; // who created or last updated the item
+}
+
+export interface BasecampNotificationsResponse {
+  unreads: BasecampNotification[];
+  reads: BasecampNotification[];
+}
 
 // A search hit from GET /search.json?type=Todo. The shape lines up with
 // MyAssignment closely so the same row component can render both.
@@ -439,6 +512,19 @@ export const IPC = {
   BC_GET_MY_ASSIGNMENTS: 'basecamp:get-my-assignments',
   BC_GET_MY_ASSIGNMENTS_DUE: 'basecamp:get-my-assignments-due',
   BC_SEARCH_TODOS: 'basecamp:search-todos',
+  // v5.2 — Project members (for the multi-person time-entry picker).
+  BC_LIST_PROJECT_MEMBERS: 'basecamp:list-project-members',
+  // v5.2 — Automatic check-ins. Discover the questionnaire on a project,
+  // list its questions, post an answer.
+  BC_LIST_QUESTIONNAIRES: 'basecamp:list-questionnaires',
+  BC_GET_QUESTIONS: 'basecamp:get-questions',
+  BC_POST_QUESTION_ANSWER: 'basecamp:post-question-answer',
+  // v5.2 — My notifications ("Hey!" replacement).
+  BC_GET_NOTIFICATIONS: 'basecamp:get-notifications',
+  BC_MARK_NOTIFICATION_READ: 'basecamp:mark-notification-read',
+  // v5.2 — Main → renderer event when the 9am check-in scheduler decides
+  // it's time to prompt the user. Renderer opens CheckInModal in response.
+  CHECKIN_PROMPT: 'checkin:prompt',
   BC_AUTH_CHANGED: 'basecamp:auth-changed', // main → renderer
 
   // Today plan + Recents (renderer → main)

@@ -8,6 +8,11 @@ import {
   MyAssignmentsResponse,
   MyAssignmentsDueScope,
   TodoSearchResult,
+  BasecampPerson,
+  BasecampQuestionnaire,
+  BasecampQuestion,
+  BasecampNotification,
+  BasecampNotificationsResponse,
 } from '../../../shared/types';
 
 interface RawProject {
@@ -84,6 +89,55 @@ interface RawSearchHit {
   bucket: { id: number; name: string; type: string };
   parent?: { id: number; title: string; type: string };
   created_at: string;
+}
+
+// v5.2 — Raw shapes for the new endpoints. Kept loose to absorb any field
+// drift in the Basecamp API (we only consume what we mapped explicitly).
+interface RawPerson {
+  id: number;
+  name: string;
+  email_address: string;
+  avatar_url?: string;
+  title?: string;
+  admin?: boolean;
+  client?: boolean;
+  can_access_timesheet?: boolean;
+}
+
+interface RawQuestionnaire {
+  id: number;
+  title: string;
+  url: string;
+  app_url: string;
+}
+
+interface RawQuestion {
+  id: number;
+  title: string;
+  url: string;
+  app_url: string;
+  paused?: boolean;
+  schedule?: { days?: string[] };
+}
+
+// Basecamp's /my/readings.json returns flat fields (NOT a nested bucket
+// object like other endpoints): bucket_name, content_excerpt, type.
+interface RawNotification {
+  id: number;
+  section: 'inbox' | 'chats' | 'pings' | 'remembered' | 'mentions';
+  title?: string;
+  bucket_name?: string;
+  type?: string;            // Recording, Event, etc.
+  content_excerpt?: string;
+  app_url?: string;
+  created_at: string;
+  creator?: { id: number; name: string };
+}
+
+interface RawNotificationsResponse {
+  unreads?: RawNotification[];
+  reads?: RawNotification[];
+  memories?: RawNotification[];
 }
 
 const MAX_AUTH_RETRIES = 1;
@@ -197,10 +251,12 @@ export class BasecampApi {
     content: string;
     description?: string;
     parentId?: number;
+    dueOn?: string;
   }): Promise<BasecampTodo> {
     const body: Record<string, unknown> = { content: input.content };
     if (input.description) body.description = input.description;
     if (input.parentId) body.parent_id = input.parentId;
+    if (input.dueOn) body.due_on = input.dueOn;
 
     const todo = await this.requestJson<RawTodo>(
       `${this.accountBase()}/buckets/${input.projectId}/todolists/${input.todoListId}/todos.json`,
@@ -223,9 +279,16 @@ export class BasecampApi {
     date: string;
     hours: string;
     description?: string;
+    // v5.2 — Optional `personId` for the multi-person time-entry feature.
+    // When omitted, Basecamp defaults to the authenticated user. When set
+    // to a project member, Basecamp may return 403 if the authenticated
+    // user lacks permission to log time on someone else's behalf — the
+    // caller handles that per-person.
+    personId?: number;
   }): Promise<BasecampTimesheetEntry> {
     const body: Record<string, unknown> = { date: input.date, hours: input.hours };
     if (input.description) body.description = input.description;
+    if (input.personId) body.person_id = input.personId;
 
     const raw = await this.requestJson<RawTimesheetEntry>(
       `${this.accountBase()}/recordings/${input.todoId}/timesheet/entries.json`,
@@ -313,6 +376,96 @@ export class BasecampApi {
       parent: h.parent,
       createdAt: h.created_at,
     }));
+  }
+
+  // v5.2 — Project members. Used by the multi-person time-entry picker to
+  // show who the user can post on behalf of. `canAccessTimesheet` filters
+  // clients out (they can't have timesheet entries). The Basecamp API
+  // returns admin/owner/client flags directly.
+  async listProjectMembers(projectId: number): Promise<BasecampPerson[]> {
+    const raw = await this.paginate<RawPerson>(`${this.accountBase()}/projects/${projectId}/people.json`);
+    return raw.map((p) => ({
+      id: p.id,
+      name: p.name,
+      emailAddress: p.email_address,
+      avatarUrl: p.avatar_url,
+      title: p.title,
+      admin: p.admin ?? false,
+      client: p.client ?? false,
+      canAccessTimesheet: p.can_access_timesheet ?? false,
+    }));
+  }
+
+  // v5.2 — Discover automatic check-ins for a project. Returns the project's
+  // questionnaire (one per project) — or null if check-ins aren't enabled.
+  // The questionnaire ID comes from the project's dock entry (similar pattern
+  // to todoset discovery).
+  async getQuestionnaireForProject(projectId: number): Promise<BasecampQuestionnaire | null> {
+    interface RawProjectWithDock {
+      id: number;
+      dock?: Array<{ id: number; name: string; enabled: boolean; url: string }>;
+    }
+    const proj = await this.requestJson<RawProjectWithDock>(`${this.accountBase()}/projects/${projectId}.json`);
+    const questionnaireDock = proj.dock?.find((d) => d.name === 'questionnaire' && d.enabled);
+    if (!questionnaireDock) return null;
+    const raw = await this.requestJson<RawQuestionnaire>(`${this.accountBase()}/buckets/${projectId}/questionnaires/${questionnaireDock.id}.json`);
+    return {
+      id: raw.id,
+      title: raw.title,
+      url: raw.url,
+      appUrl: raw.app_url,
+    };
+  }
+
+  // v5.2 — List the questions inside a questionnaire.
+  async listQuestions(projectId: number, questionnaireId: number): Promise<BasecampQuestion[]> {
+    const raw = await this.paginate<RawQuestion>(`${this.accountBase()}/buckets/${projectId}/questionnaires/${questionnaireId}/questions.json`);
+    return raw.map((q) => ({
+      id: q.id,
+      title: q.title,
+      url: q.url,
+      appUrl: q.app_url,
+      scheduleDays: q.schedule?.days,
+      paused: q.paused === true,
+    }));
+  }
+
+  // v5.2 — Post a check-in answer. The CLI uses the same endpoint for the
+  // `check-in answer` command. Content is rich text but plain text works.
+  async postQuestionAnswer(projectId: number, questionId: number, content: string): Promise<void> {
+    await this.requestJson<void>(
+      `${this.accountBase()}/buckets/${projectId}/questions/${questionId}/answers.json`,
+      { method: 'POST', body: JSON.stringify({ content }) },
+    );
+  }
+
+  // v5.2 — User's notification inbox ("Hey!" panel). Returns unreads (capped
+  // at 100, unpaginated) + first page of reads.
+  async getNotifications(): Promise<BasecampNotificationsResponse> {
+    const raw = await this.requestJson<RawNotificationsResponse>(`${this.accountBase()}/my/readings.json`);
+    const mapOne = (n: RawNotification): BasecampNotification => ({
+      id: n.id,
+      section: n.section,
+      title: n.title ?? 'Untitled',
+      excerpt: n.content_excerpt,
+      recordingType: n.type,
+      appUrl: n.app_url ?? '',
+      createdAt: n.created_at,
+      bucketName: n.bucket_name,
+      creatorName: n.creator?.name,
+    });
+    return {
+      unreads: (raw.unreads ?? []).map(mapOne),
+      reads: (raw.reads ?? []).map(mapOne),
+    };
+  }
+
+  // v5.2 — Mark a notification as read.
+  async markNotificationRead(notificationId: number): Promise<void> {
+    await this.requestJson<void>(
+      `${this.accountBase()}/my/readings/${notificationId}.json`,
+      { method: 'PUT' },
+    );
   }
 
   private mapMyAssignment(r: RawMyAssignment): MyAssignment {

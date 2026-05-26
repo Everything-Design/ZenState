@@ -14,7 +14,7 @@ const zs = window.zenstate as unknown as {
   bcListProjects: () => Promise<{ ok: true; data: BasecampProject[] } | { ok: false; error: string }>;
   bcListTodoLists: (projectId: number, todoSetId: number) => Promise<{ ok: true; data: BasecampTodoList[] } | { ok: false; error: string }>;
   bcListTodos: (projectId: number, todoListId: number) => Promise<{ ok: true; data: BasecampTodo[] } | { ok: false; error: string }>;
-  bcCreateTodo: (data: { projectId: number; todoListId: number; content: string }) => Promise<{ ok: true; data: BasecampTodo } | { ok: false; error: string }>;
+  bcCreateTodo: (data: { projectId: number; todoListId: number; content: string; dueOn?: string }) => Promise<{ ok: true; data: BasecampTodo } | { ok: false; error: string }>;
   bcPostComment: (data: { projectId: number; todoId: number; content: string }) => Promise<{ ok: true } | { ok: false; error: string }>;
   todayPinMany: (items: PinnedTodo[]) => Promise<{ plan: TodayPlan; added: number }>;
   tomorrowPinMany: (items: PinnedTodo[]) => Promise<{ plan: unknown; added: number }>;
@@ -1062,6 +1062,8 @@ function CreateTodoInline({ accountId, onCreated }: CreateTodoInlineProps) {
   const [selProject, setSelProject] = useState<BasecampProject | null>(null);
   const [selList, setSelList] = useState<BasecampTodoList | null>(null);
   const [content, setContent] = useState('');
+  // v5.2 — optional due date for the new todo. Empty string = no date.
+  const [dueOn, setDueOn] = useState('');
   const [loadingP, setLoadingP] = useState(false);
   const [loadingL, setLoadingL] = useState(false);
   const [creating, setCreating] = useState(false);
@@ -1093,11 +1095,16 @@ function CreateTodoInline({ accountId, onCreated }: CreateTodoInlineProps) {
     if (!selProject || !selList || !content.trim() || creating) return;
     setCreating(true); setError(null);
     try {
-      const res = await zs.bcCreateTodo({ projectId: selProject.id, todoListId: selList.id, content: content.trim() });
+      const res = await zs.bcCreateTodo({
+        projectId: selProject.id,
+        todoListId: selList.id,
+        content: content.trim(),
+        dueOn: dueOn.trim() || undefined,
+      });
       if (!res.ok) { setError(res.error); setCreating(false); return; }
       const todo = res.data;
       onCreated({ todoId: todo.id, projectId: selProject.id, todoListId: selList.id, accountId, content: todo.content, projectName: selProject.name });
-      setContent(''); setSelProject(null); setSelList(null); setLists([]); setOpen(false);
+      setContent(''); setDueOn(''); setSelProject(null); setSelList(null); setLists([]); setOpen(false);
     } catch (e) {
       setError((e as Error).message);
     } finally {
@@ -1152,6 +1159,26 @@ function CreateTodoInline({ accountId, onCreated }: CreateTodoInlineProps) {
         onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) handleCreate(); }}
         style={{ fontSize: 'var(--text-sm)' }}
       />
+      {/* v5.2 — Optional due date. Labelled so it's discoverable; empty = no date. */}
+      <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 'var(--text-xs)', color: 'var(--zen-tertiary-text)' }}>
+        <span style={{ minWidth: 56 }}>Due date</span>
+        <input
+          type="date"
+          className="text-input"
+          value={dueOn}
+          onChange={(e) => setDueOn(e.target.value)}
+          style={{ flex: 1, fontSize: 'var(--text-xs)', color: dueOn ? 'var(--zen-text)' : 'var(--zen-tertiary-text)' }}
+        />
+        {dueOn && (
+          <button
+            onClick={() => setDueOn('')}
+            style={{ background: 'transparent', border: 'none', color: 'var(--zen-tertiary-text)', cursor: 'pointer', padding: 2, fontSize: 'var(--text-xs)' }}
+            title="Clear due date"
+          >
+            ×
+          </button>
+        )}
+      </label>
       {error && <span style={{ fontSize: 'var(--text-xs)', color: 'var(--status-focused)' }}>{error}</span>}
       <div style={{ display: 'flex', gap: 6, justifyContent: 'flex-end' }}>
         <button className="btn btn-secondary" onClick={() => setOpen(false)} style={{ padding: '4px 10px', fontSize: 'var(--text-sm)' }}>Cancel</button>
@@ -1360,6 +1387,7 @@ function BrowseTab({ alreadyPinned, accountId, pending, onRowClick }: BrowseTabP
   const [error, setError] = useState<string | null>(null);
   const [search, setSearch] = useState('');
   const [createContent, setCreateContent] = useState('');
+  const [createDueOn, setCreateDueOn] = useState('');
   const [creating, setCreating] = useState(false);
   const [createError, setCreateError] = useState<string | null>(null);
   const fetched = useRef(false);
@@ -1407,13 +1435,15 @@ function BrowseTab({ alreadyPinned, accountId, pending, onRowClick }: BrowseTabP
     if (!project || !list || !createContent.trim() || creating) return;
     setCreating(true); setCreateError(null);
     try {
-      const res = await zs.bcCreateTodo({ projectId: project.id, todoListId: list.id, content: createContent.trim() });
+      const dueOn = createDueOn.trim() || undefined;
+      const res = await zs.bcCreateTodo({ projectId: project.id, todoListId: list.id, content: createContent.trim(), dueOn });
       if (!res.ok) { setCreateError(res.error); setCreating(false); return; }
       const todo = res.data;
       setTodos((prev) => [...prev, todo]);
       const item: PinnedTodo = { todoId: todo.id, projectId: project.id, todoListId: list.id, accountId, content: todo.content, projectName: project.name };
       onRowClick(item);
       setCreateContent('');
+      setCreateDueOn('');
     } catch (e) {
       setCreateError((e as Error).message);
     } finally {
@@ -1489,23 +1519,45 @@ function BrowseTab({ alreadyPinned, accountId, pending, onRowClick }: BrowseTabP
               />
             );
           })}
-          <div style={{ marginTop: 6, display: 'flex', gap: 6 }}>
-            <input
-              className="text-input"
-              placeholder="New to-do…"
-              value={createContent}
-              onChange={(e) => setCreateContent(e.target.value)}
-              onKeyDown={(e) => { if (e.key === 'Enter') handleCreateInBrowse(); }}
-              style={{ flex: 1, fontSize: 'var(--text-sm)' }}
-            />
-            <button
-              className="btn btn-primary"
-              disabled={!createContent.trim() || creating}
-              onClick={handleCreateInBrowse}
-              style={{ padding: '6px 12px', fontSize: 'var(--text-sm)', whiteSpace: 'nowrap' }}
-            >
-              {creating ? '…' : 'Create'}
-            </button>
+          <div style={{ marginTop: 6, display: 'flex', flexDirection: 'column', gap: 4 }}>
+            <div style={{ display: 'flex', gap: 6 }}>
+              <input
+                className="text-input"
+                placeholder="New to-do…"
+                value={createContent}
+                onChange={(e) => setCreateContent(e.target.value)}
+                onKeyDown={(e) => { if (e.key === 'Enter') handleCreateInBrowse(); }}
+                style={{ flex: 1, fontSize: 'var(--text-sm)' }}
+              />
+              <button
+                className="btn btn-primary"
+                disabled={!createContent.trim() || creating}
+                onClick={handleCreateInBrowse}
+                style={{ padding: '6px 12px', fontSize: 'var(--text-sm)', whiteSpace: 'nowrap' }}
+              >
+                {creating ? '…' : 'Create'}
+              </button>
+            </div>
+            {/* v5.2 — Labelled due-date row so users notice the option. */}
+            <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 'var(--text-xs)', color: 'var(--zen-tertiary-text)' }}>
+              <span style={{ minWidth: 56 }}>Due date</span>
+              <input
+                type="date"
+                className="text-input"
+                value={createDueOn}
+                onChange={(e) => setCreateDueOn(e.target.value)}
+                style={{ flex: 1, fontSize: 'var(--text-xs)', color: createDueOn ? 'var(--zen-text)' : 'var(--zen-tertiary-text)' }}
+              />
+              {createDueOn && (
+                <button
+                  onClick={() => setCreateDueOn('')}
+                  style={{ background: 'transparent', border: 'none', color: 'var(--zen-tertiary-text)', cursor: 'pointer', padding: 2, fontSize: 'var(--text-xs)' }}
+                  title="Clear due date"
+                >
+                  ×
+                </button>
+              )}
+            </label>
           </div>
           {createError && <span style={{ fontSize: 'var(--text-xs)', color: 'var(--status-focused)' }}>{createError}</span>}
         </>

@@ -10,6 +10,8 @@ interface AlertData {
   targetDuration?: number;
   elapsedSeconds?: number;
   lastActivityAt?: string;
+  // v5.2 — multi-person picker needs the project to fetch members.
+  projectId?: number;
 }
 
 export default function AlertApp() {
@@ -54,9 +56,10 @@ export default function AlertApp() {
       onIdleResponse={(action, stopAtIso, enableMeetingMode) => {
         window.zenstate.timerIdleRespond({ action, stopAtIso, enableMeetingMode });
       }}
-      onTimesheetConfirm={(action, hours, notes, durationSec) => {
-        window.zenstate.timerTimesheetConfirm({ action, hours, notes, durationSec });
+      onTimesheetConfirm={(action, hours, notes, durationSec, additionalPersonIds) => {
+        window.zenstate.timerTimesheetConfirm({ action, hours, notes, durationSec, additionalPersonIds });
       }}
+      timesheetProjectId={alertData.projectId}
     />
   );
 }
