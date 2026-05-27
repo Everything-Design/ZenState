@@ -337,6 +337,15 @@ app.on('child-process-gone', (_event, details) => {
 
 app.on('before-quit', () => {
   isQuitting = true;
+  // v5.2.1 — w.setClosable(true) is critical. Both popoverWindow and miniTimerWindow
+  // are created with `closable: false` options, which silently blocks Electron's
+  // exit sequence on macOS/Windows as Electron's teardown fails to close locked windows.
+  // Re-enabling closability on all windows allows the app to quit cleanly.
+  BrowserWindow.getAllWindows().forEach((w) => {
+    if (!w.isDestroyed()) {
+      w.setClosable(true);
+    }
+  });
   networking?.stop();
   globalShortcut.unregisterAll();
 });
