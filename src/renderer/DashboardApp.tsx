@@ -100,6 +100,17 @@ declare global {
       tomorrowToggleComplete: (todoId: number) => Promise<TodayPlan>;
       recentsGet: () => Promise<RecentTodo[]>;
       alertGetData: () => Promise<unknown>;
+      todayPinMany: (items: PinnedTodo[]) => Promise<TodayPlan>;
+      tomorrowPinMany: (items: PinnedTodo[]) => Promise<TodayPlan>;
+      pickAvatarImage: () => Promise<string | null>;
+      bcUpdateTimeEntry: (data: { entryId: number; date?: string; hours?: string; description?: string; personId?: number }) => Promise<{ ok: boolean; data?: BasecampTimesheetEntry; error?: string }>;
+      bcDeleteTimeEntry: (entryId: number) => Promise<{ ok: boolean; error?: string }>;
+      bcGetMyAssignments: () => Promise<{ ok: boolean; data?: BasecampTodo[]; error?: string }>;
+      bcGetMyAssignmentsDue: (scope: string) => Promise<{ ok: boolean; data?: BasecampTodo[]; error?: string }>;
+      bcSearchTodos: (query: string) => Promise<{ ok: boolean; data?: BasecampTodo[]; error?: string }>;
+      connectToIP: (host: string, port: number) => Promise<{ ok: boolean; error?: string }>;
+      getLocalInfo: () => Promise<{ addresses: string[]; port: number }>;
+      getWiFiInfo: () => Promise<{ ssid?: string; bssid?: string; error?: string }>;
       // Returns an unsubscribe function — call it in useEffect cleanup to
       // detach just this listener (instead of nuking every listener on the
       // channel via removeAllListeners).
@@ -288,7 +299,7 @@ export default function DashboardApp() {
       window.zenstate.on('basecamp:timesheet-updated', () => {
         window.zenstate.getRecords().then((rs) => {
           setRecords(rs as DailyRecord[]);
-        }).catch(() => {});
+        }).catch(() => { });
       }),
       // v5.2 — Daily check-in prompt from main (9:05am weekdays).
       window.zenstate.on(IPC.CHECKIN_PROMPT, (data: unknown) => {

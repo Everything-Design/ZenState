@@ -129,11 +129,11 @@ export default function MenuBarView({ currentUser, peers, timerState, statusReve
     const offShown = window.zenstate.on('popover:shown', () => {
       window.zenstate.todayGet().then((res) => {
         setTodayPlan(res?.plan ?? null);
-      }).catch(() => {});
+      }).catch(() => { });
     });
     window.zenstate.todayGet().then((res) => {
       if (!eventArrived) setTodayPlan(res?.plan ?? null);
-    }).catch(() => {});
+    }).catch(() => { });
     return () => { offChanged(); offShown(); };
   }, []);
 
@@ -158,7 +158,7 @@ export default function MenuBarView({ currentUser, peers, timerState, statusReve
     });
     window.zenstate.teamGetRecentPings().then((initial) => {
       setRecentPings((prev) => prev.length > 0 ? prev : initial);
-    }).catch(() => {});
+    }).catch(() => { });
     return off;
   }, []);
 
@@ -166,7 +166,7 @@ export default function MenuBarView({ currentUser, peers, timerState, statusReve
   useEffect(() => {
     window.zenstate.bcGetAuthState().then((state: BasecampAuthState) => {
       setBcConnected(state.isConnected);
-    }).catch(() => {});
+    }).catch(() => { });
     return window.zenstate.on(IPC.BC_AUTH_CHANGED, (...args: unknown[]) => {
       const state = args[0] as BasecampAuthState;
       setBcConnected(state.isConnected);
@@ -366,8 +366,8 @@ export default function MenuBarView({ currentUser, peers, timerState, statusReve
           <div className="user-name">{currentUser.name}</div>
           <div className="user-status" style={{ color: getStatusColor(currentUser.status) }}>
             {currentUser.status === AvailabilityStatus.Available ? '● Available' :
-             currentUser.status === AvailabilityStatus.Occupied ? '● Occupied' :
-             currentUser.status === AvailabilityStatus.Focused ? '● Focus Mode' : '● Offline'}
+              currentUser.status === AvailabilityStatus.Occupied ? '● Occupied' :
+                currentUser.status === AvailabilityStatus.Focused ? '● Focus Mode' : '● Offline'}
           </div>
         </div>
       </div>
@@ -411,7 +411,7 @@ export default function MenuBarView({ currentUser, peers, timerState, statusReve
           >
             <span className={`status-dot ${status}`} />
             {status === AvailabilityStatus.Available ? 'Available' :
-             status === AvailabilityStatus.Occupied ? 'Occupied' : 'Focus'}
+              status === AvailabilityStatus.Occupied ? 'Occupied' : 'Focus'}
           </button>
         ))}
       </div>
@@ -530,10 +530,10 @@ export default function MenuBarView({ currentUser, peers, timerState, statusReve
           >
             Today{todayPlan && todayPlan.items.length > 0
               ? (() => {
-                  const total = todayPlan.items.length;
-                  const done = todayPlan.items.filter((i) => i.completedAt).length;
-                  return done > 0 ? ` · ${total - done}/${total}` : ` · ${total}`;
-                })()
+                const total = todayPlan.items.length;
+                const done = todayPlan.items.filter((i) => i.completedAt).length;
+                return done > 0 ? ` · ${total - done}/${total}` : ` · ${total}`;
+              })()
               : ''}
           </button>
           <button
@@ -559,307 +559,307 @@ export default function MenuBarView({ currentUser, peers, timerState, statusReve
 
       {/* TODAY tab content */}
       {popoverTab === 'today' && (
-      <>
-      {todayPlan === null ? (
-        // Loading skeleton — avoid flashing the empty state for one render
-        // while todayGet() is in flight on first open.
-        <div style={{ padding: '24px 16px', flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-          <div style={{ fontSize: 'var(--text-xs)', color: 'var(--zen-tertiary-text)' }}>Loading…</div>
-        </div>
-      ) : todayPlan.items.length > 0 ? (
-        <div style={{ padding: '6px 16px 0', flex: 1, overflowY: 'auto' }}>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
-            {/* Show ALL items — the parent div scrolls if there are many.
+        <>
+          {todayPlan === null ? (
+            // Loading skeleton — avoid flashing the empty state for one render
+            // while todayGet() is in flight on first open.
+            <div style={{ padding: '24px 16px', flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+              <div style={{ fontSize: 'var(--text-xs)', color: 'var(--zen-tertiary-text)' }}>Loading…</div>
+            </div>
+          ) : todayPlan.items.length > 0 ? (
+            <div style={{ padding: '6px 16px 0', flex: 1, overflowY: 'auto' }}>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
+                {/* Show ALL items — the parent div scrolls if there are many.
                 Sort completed items to the bottom so active todos stay above
                 the fold; users hate scrolling past struck-through rows to
                 find what's still actionable. */}
-            {[...todayPlan.items].sort((a, b) => Number(!!a.completedAt) - Number(!!b.completedAt)).map((p) => {
-              // v5.1.4 — Match by Basecamp todoId when both sides have it;
-              // fall back to label match for non-Basecamp timer sessions.
-              // Without this, two same-name pinned todos both render as
-              // "running" when the timer is on either one of them.
-              const running = isTimerActive && (
-                (timerState.basecampTodoId && p.todoId)
-                  ? timerState.basecampTodoId === p.todoId
-                  : timerState.taskLabel === p.content
-              );
-              const isComplete = !!p.completedAt;
-              // Don't allow starting a timer on a completed task — the user
-              // marked it done, so the Start button is disabled until they
-              // un-check it on the dashboard.
-              const startDisabled = isTimerActive || isComplete;
-              return (
-                <div
-                  key={p.todoId}
-                  style={{
-                    display: 'flex', alignItems: 'center', gap: 8,
-                    padding: '6px 10px',
-                    borderRadius: 'var(--radius-sm)',
-                    background: running ? 'rgba(48, 209, 88, 0.08)' : 'var(--zen-tertiary-bg)',
-                    border: `1px solid ${running ? 'rgba(48, 209, 88, 0.25)' : 'var(--zen-divider)'}`,
-                    opacity: isComplete ? 0.55 : 1,
-                    transition: 'background var(--duration-quick) var(--ease-standard), opacity var(--duration-quick) var(--ease-standard)',
-                  }}
-                >
-                  <div style={{
-                    width: 8, height: 8, borderRadius: '50%',
-                    background: isComplete ? 'var(--status-available)' : (running ? 'var(--status-available)' : 'transparent'),
-                    border: isComplete || running ? 'none' : '1.5px solid var(--zen-tertiary-text)',
-                    flexShrink: 0,
-                    boxShadow: running ? '0 0 6px rgba(48, 209, 88, 0.5)' : 'none',
-                  }} />
-                  <div style={{ flex: 1, minWidth: 0 }}>
-                    <div style={{
-                      fontSize: 'var(--text-sm)', color: 'var(--zen-text)',
-                      textDecoration: isComplete ? 'line-through' : 'none',
-                      overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-                    }}>
-                      {p.content}
-                    </div>
-                    {p.projectName && (
-                      <div style={{ fontSize: 10, color: 'var(--zen-tertiary-text)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', marginTop: 1 }}>
-                        {p.projectName}
+                {[...todayPlan.items].sort((a, b) => Number(!!a.completedAt) - Number(!!b.completedAt)).map((p) => {
+                  // v5.1.4 — Match by Basecamp todoId when both sides have it;
+                  // fall back to label match for non-Basecamp timer sessions.
+                  // Without this, two same-name pinned todos both render as
+                  // "running" when the timer is on either one of them.
+                  const running = isTimerActive && (
+                    (timerState.basecampTodoId && p.todoId)
+                      ? timerState.basecampTodoId === p.todoId
+                      : timerState.taskLabel === p.content
+                  );
+                  const isComplete = !!p.completedAt;
+                  // Don't allow starting a timer on a completed task — the user
+                  // marked it done, so the Start button is disabled until they
+                  // un-check it on the dashboard.
+                  const startDisabled = isTimerActive || isComplete;
+                  return (
+                    <div
+                      key={p.todoId}
+                      style={{
+                        display: 'flex', alignItems: 'center', gap: 8,
+                        padding: '6px 10px',
+                        borderRadius: 'var(--radius-sm)',
+                        background: running ? 'rgba(48, 209, 88, 0.08)' : 'var(--zen-tertiary-bg)',
+                        border: `1px solid ${running ? 'rgba(48, 209, 88, 0.25)' : 'var(--zen-divider)'}`,
+                        opacity: isComplete ? 0.55 : 1,
+                        transition: 'background var(--duration-quick) var(--ease-standard), opacity var(--duration-quick) var(--ease-standard)',
+                      }}
+                    >
+                      <div style={{
+                        width: 8, height: 8, borderRadius: '50%',
+                        background: isComplete ? 'var(--status-available)' : (running ? 'var(--status-available)' : 'transparent'),
+                        border: isComplete || running ? 'none' : '1.5px solid var(--zen-tertiary-text)',
+                        flexShrink: 0,
+                        boxShadow: running ? '0 0 6px rgba(48, 209, 88, 0.5)' : 'none',
+                      }} />
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div style={{
+                          fontSize: 'var(--text-sm)', color: 'var(--zen-text)',
+                          textDecoration: isComplete ? 'line-through' : 'none',
+                          overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                        }}>
+                          {p.content}
+                        </div>
+                        {p.projectName && (
+                          <div style={{ fontSize: 10, color: 'var(--zen-tertiary-text)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', marginTop: 1 }}>
+                            {p.projectName}
+                          </div>
+                        )}
                       </div>
-                    )}
-                  </div>
-                  {running ? (
-                    <button onClick={() => window.zenstate.stopTimer()} title="Stop"
-                      style={{ background: 'rgba(255,149,0,0.18)', border: '1px solid rgba(255,149,0,0.32)', color: 'var(--status-occupied)', cursor: 'pointer', padding: '4px 9px', borderRadius: 6, fontSize: 10, fontWeight: 600, fontFamily: 'inherit', flexShrink: 0 }}>
-                      Stop
-                    </button>
-                  ) : (
-                    <button onClick={() => handleStartFromPinned(p)}
-                      title={isComplete ? 'Marked complete — un-check on the Plan tab to restart' : 'Start timer'}
-                      disabled={startDisabled}
-                      style={{ background: 'var(--zen-primary)', border: 'none', color: 'white', cursor: startDisabled ? 'not-allowed' : 'pointer', opacity: startDisabled ? 0.4 : 1, padding: '4px 9px', borderRadius: 6, fontSize: 10, fontWeight: 600, fontFamily: 'inherit', flexShrink: 0, display: 'inline-flex', alignItems: 'center', gap: 3 }}>
-                      <Play size={9} /> Start
-                    </button>
-                  )}
-                </div>
-              );
-            })}
-          </div>
-        </div>
-      ) : (
-        <div style={{ padding: '24px 16px', textAlign: 'center', flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 10 }}>
-          <Pin size={20} style={{ color: 'var(--zen-tertiary-text)' }} />
-          <div style={{ fontSize: 'var(--text-sm)', color: 'var(--zen-secondary-text)', lineHeight: 'var(--leading-relaxed)', maxWidth: 240 }}>
-            No to-dos pinned for today.<br />Plan your day in the Dashboard.
-          </div>
-          <button
-            className="btn btn-secondary"
-            style={{ fontSize: 'var(--text-sm)' }}
-            onClick={() => { window.zenstate.openDashboard('today'); window.zenstate.closePopover(); }}
-          >
-            Open Today
-          </button>
-        </div>
-      )}
-      </>
+                      {running ? (
+                        <button onClick={() => window.zenstate.stopTimer()} title="Stop"
+                          style={{ background: 'rgba(255,149,0,0.18)', border: '1px solid rgba(255,149,0,0.32)', color: 'var(--status-occupied)', cursor: 'pointer', padding: '4px 9px', borderRadius: 6, fontSize: 10, fontWeight: 600, fontFamily: 'inherit', flexShrink: 0 }}>
+                          Stop
+                        </button>
+                      ) : (
+                        <button onClick={() => handleStartFromPinned(p)}
+                          title={isComplete ? 'Marked complete — un-check on the Plan tab to restart' : 'Start timer'}
+                          disabled={startDisabled}
+                          style={{ background: 'var(--zen-primary)', border: 'none', color: 'white', cursor: startDisabled ? 'not-allowed' : 'pointer', opacity: startDisabled ? 0.4 : 1, padding: '4px 9px', borderRadius: 6, fontSize: 10, fontWeight: 600, fontFamily: 'inherit', flexShrink: 0, display: 'inline-flex', alignItems: 'center', gap: 3 }}>
+                          <Play size={9} /> Start
+                        </button>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          ) : (
+            <div style={{ padding: '24px 16px', textAlign: 'center', flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 10 }}>
+              <Pin size={20} style={{ color: 'var(--zen-tertiary-text)' }} />
+              <div style={{ fontSize: 'var(--text-sm)', color: 'var(--zen-secondary-text)', lineHeight: 'var(--leading-relaxed)', maxWidth: 240 }}>
+                No to-dos pinned for today.<br />Plan your day in the Dashboard.
+              </div>
+              <button
+                className="btn btn-secondary"
+                style={{ fontSize: 'var(--text-sm)' }}
+                onClick={() => { window.zenstate.openDashboard('today'); window.zenstate.closePopover(); }}
+              >
+                Open Today
+              </button>
+            </div>
+          )}
+        </>
       )}
 
       {/* TEAM tab content */}
       {popoverTab === 'team' && (
-      <>
-      {/* Recent pings — shown above the presence bar so users catching up see
+        <>
+          {/* Recent pings — shown above the presence bar so users catching up see
           what they missed first. Auto-clears server-side after 6h. */}
-      {recentPings.length > 0 && (
-        <div style={{ padding: '6px 16px 0' }}>
-          <div style={{ fontSize: 'var(--text-xs)', color: 'var(--zen-tertiary-text)', textTransform: 'uppercase', letterSpacing: 0.6, fontWeight: 600, marginBottom: 6 }}>
-            Recent pings
-          </div>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 4, maxHeight: 140, overflowY: 'auto' }}>
-            {recentPings.slice(0, 5).map((p) => (
-              <div key={p.id} style={{
-                display: 'flex', alignItems: 'flex-start', gap: 8,
-                padding: '7px 10px',
-                borderRadius: 'var(--radius-sm)',
-                background: 'var(--zen-tertiary-bg)',
-                border: '1px solid var(--zen-divider)',
-              }}>
-                <Megaphone size={11} style={{ color: 'var(--zen-primary)', flexShrink: 0, marginTop: 2 }} />
-                <div style={{ flex: 1, minWidth: 0 }}>
-                  <div style={{ fontSize: 'var(--text-sm)', color: 'var(--zen-text)', lineHeight: 1.35 }}>{p.message}</div>
-                  <div style={{ fontSize: 10, color: 'var(--zen-tertiary-text)', marginTop: 2, display: 'flex', gap: 6 }}>
-                    <span>{p.senderName}</span>
-                    <span>·</span>
-                    <span>{formatRelative(p.timestamp)}</span>
-                  </div>
-                </div>
-                <button
-                  onClick={() => dismissPing(p.id)}
-                  title="Dismiss"
-                  style={{ background: 'transparent', border: 'none', cursor: 'pointer', color: 'var(--zen-tertiary-text)', display: 'flex', padding: 2, borderRadius: 4, flexShrink: 0 }}
-                  onMouseEnter={(e) => e.currentTarget.style.color = 'var(--zen-text)'}
-                  onMouseLeave={(e) => e.currentTarget.style.color = 'var(--zen-tertiary-text)'}
-                >
-                  <X size={11} />
-                </button>
+          {recentPings.length > 0 && (
+            <div style={{ padding: '6px 16px 0' }}>
+              <div style={{ fontSize: 'var(--text-xs)', color: 'var(--zen-tertiary-text)', textTransform: 'uppercase', letterSpacing: 0.6, fontWeight: 600, marginBottom: 6 }}>
+                Recent pings
               </div>
-            ))}
-          </div>
-        </div>
-      )}
-
-      {/* Presence Bar */}
-      <div className="presence-bar">
-        <div className="presence-track">
-          <div className="presence-segment" style={{ width: `${(presenceCounts.available / presenceCounts.total) * 100}%`, background: 'var(--status-available)' }} />
-          <div className="presence-segment" style={{ width: `${(presenceCounts.occupied / presenceCounts.total) * 100}%`, background: 'var(--status-occupied)' }} />
-          <div className="presence-segment" style={{ width: `${(presenceCounts.focused / presenceCounts.total) * 100}%`, background: 'var(--status-focused)' }} />
-        </div>
-        <div className="presence-counts">
-          <div className="presence-count">
-            <span className="status-dot available" /> {presenceCounts.available}
-          </div>
-          <div className="presence-count">
-            <span className="status-dot occupied" /> {presenceCounts.occupied}
-          </div>
-          <div className="presence-count">
-            <span className="status-dot focused" /> {presenceCounts.focused}
-          </div>
-          <div className="spacer" />
-          <span style={{ color: 'var(--zen-tertiary-text)' }}>{presenceCounts.total} online</span>
-        </div>
-      </div>
-
-      <div className="divider" style={{ margin: '0 16px' }} />
-
-      {/* Search */}
-      {onlinePeers.length > 3 && (
-        <div style={{ padding: '4px 16px' }}>
-          <input
-            className="search-input"
-            placeholder="🔍 Search team..."
-            value={searchText}
-            onChange={(e) => setSearchText(e.target.value)}
-          />
-        </div>
-      )}
-
-      {/* Team List */}
-      <div className="team-list">
-        {filteredPeers.length === 0 ? (
-          <div style={{ textAlign: 'center', padding: 20, color: 'var(--zen-tertiary-text)', fontSize: 12 }}>
-            {onlinePeers.length === 0 ? 'No team members online' : 'No matches'}
-          </div>
-        ) : (
-          filteredPeers.map((peer) => (
-            <div key={peer.id}>
-              <div className="team-member-row">
-                <div className="member-avatar" style={{ background: peer.avatarColor || '#8E8E93' }}>
-                  {peer.avatarImageData ? (
-                    <img src={`data:image/png;base64,${peer.avatarImageData}`} style={{ width: '100%', height: '100%', borderRadius: '50%', objectFit: 'cover' }} />
-                  ) : peer.avatarEmoji ? (
-                    peer.avatarEmoji
-                  ) : (
-                    <span style={{ fontSize: 12, fontWeight: 600, color: 'white' }}>{peer.name.charAt(0).toUpperCase()}</span>
-                  )}
-                </div>
-                <div className="member-info">
-                  <div className="member-name">{peer.name}</div>
-                  {peer.activeStatusMessage ? (
-                    <div className="member-message">
-                      <MessageCircle size={10} /> {peer.activeStatusMessage}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 4, maxHeight: 140, overflowY: 'auto' }}>
+                {recentPings.slice(0, 5).map((p) => (
+                  <div key={p.id} style={{
+                    display: 'flex', alignItems: 'flex-start', gap: 8,
+                    padding: '7px 10px',
+                    borderRadius: 'var(--radius-sm)',
+                    background: 'var(--zen-tertiary-bg)',
+                    border: '1px solid var(--zen-divider)',
+                  }}>
+                    <Megaphone size={11} style={{ color: 'var(--zen-primary)', flexShrink: 0, marginTop: 2 }} />
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ fontSize: 'var(--text-sm)', color: 'var(--zen-text)', lineHeight: 1.35 }}>{p.message}</div>
+                      <div style={{ fontSize: 10, color: 'var(--zen-tertiary-text)', marginTop: 2, display: 'flex', gap: 6 }}>
+                        <span>{p.senderName}</span>
+                        <span>·</span>
+                        <span>{formatRelative(p.timestamp)}</span>
+                      </div>
                     </div>
-                  ) : (
-                    <div className="member-status-text" style={{ color: getStatusColor(peer.status) }}>
-                      {peer.status}
-                    </div>
-                  )}
-                </div>
-                {pendingRequests[peer.id] ? (
-                  <button
-                    className="btn btn-secondary"
-                    style={{ fontSize: 9, padding: '2px 6px', flexShrink: 0 }}
-                    onClick={() => handleCancelRequest(peer.id)}
-                  >
-                    Cancel
-                  </button>
-                ) : peer.status === AvailabilityStatus.Focused ? (
-                  (currentUser.canSendEmergency || currentUser.isAdmin) ? (
                     <button
-                      className="btn btn-danger"
-                      style={{ fontSize: 9, padding: '2px 6px', flexShrink: 0 }}
-                      onClick={() => handleSendEmergencyRequest(peer.id)}
+                      onClick={() => dismissPing(p.id)}
+                      title="Dismiss"
+                      style={{ background: 'transparent', border: 'none', cursor: 'pointer', color: 'var(--zen-tertiary-text)', display: 'flex', padding: 2, borderRadius: 4, flexShrink: 0 }}
+                      onMouseEnter={(e) => e.currentTarget.style.color = 'var(--zen-text)'}
+                      onMouseLeave={(e) => e.currentTarget.style.color = 'var(--zen-tertiary-text)'}
                     >
-                      🚨 Urgent
-                    </button>
-                  ) : null
-                ) : (
-                  <button
-                    className={messagePopup === peer.id ? 'btn btn-danger' : 'btn btn-primary'}
-                    style={{ fontSize: 9, padding: '2px 6px', flexShrink: 0 }}
-                    onClick={() => {
-                      setMessagePopup(messagePopup === peer.id ? null : peer.id);
-                      setMessageText('');
-                    }}
-                  >
-                    {messagePopup === peer.id ? 'Close' : 'Request'}
-                  </button>
-                )}
-                <span className={`status-dot ${peer.status}`} />
-              </div>
-              {/* Meeting request message popup */}
-              {messagePopup === peer.id && (
-                <div style={{
-                  margin: '4px 12px 8px',
-                  padding: 10,
-                  background: 'var(--zen-tertiary-bg)',
-                  borderRadius: 8,
-                  border: '1px solid var(--zen-divider)',
-                }}>
-                  <input
-                    className="text-input"
-                    placeholder="Add a message (optional)..."
-                    value={messageText}
-                    onChange={(e) => setMessageText(e.target.value)}
-                    autoFocus
-                    onKeyDown={(e) => {
-                      if (e.key === 'Enter') {
-                        handleSendRequest(peer.id, messageText || undefined);
-                      }
-                      if (e.key === 'Escape') {
-                        setMessagePopup(null);
-                        setMessageText('');
-                      }
-                    }}
-                    style={{ fontSize: 11, marginBottom: 6 }}
-                  />
-                  <div style={{ display: 'flex', gap: 6, justifyContent: 'flex-end' }}>
-                    <button
-                      className="btn btn-secondary"
-                      style={{ fontSize: 9, padding: '2px 8px' }}
-                      onClick={() => {
-                        handleSendRequest(peer.id);
-                      }}
-                    >
-                      Skip
-                    </button>
-                    <button
-                      className="btn btn-primary"
-                      style={{ fontSize: 9, padding: '2px 8px' }}
-                      onClick={() => {
-                        handleSendRequest(peer.id, messageText || undefined);
-                      }}
-                    >
-                      Send
+                      <X size={11} />
                     </button>
                   </div>
-                </div>
-              )}
+                ))}
+              </div>
             </div>
-          ))
-        )}
-      </div>
-      </>
+          )}
+
+          {/* Presence Bar */}
+          <div className="presence-bar">
+            <div className="presence-track">
+              <div className="presence-segment" style={{ width: `${(presenceCounts.available / presenceCounts.total) * 100}%`, background: 'var(--status-available)' }} />
+              <div className="presence-segment" style={{ width: `${(presenceCounts.occupied / presenceCounts.total) * 100}%`, background: 'var(--status-occupied)' }} />
+              <div className="presence-segment" style={{ width: `${(presenceCounts.focused / presenceCounts.total) * 100}%`, background: 'var(--status-focused)' }} />
+            </div>
+            <div className="presence-counts">
+              <div className="presence-count">
+                <span className="status-dot available" /> {presenceCounts.available}
+              </div>
+              <div className="presence-count">
+                <span className="status-dot occupied" /> {presenceCounts.occupied}
+              </div>
+              <div className="presence-count">
+                <span className="status-dot focused" /> {presenceCounts.focused}
+              </div>
+              <div className="spacer" />
+              <span style={{ color: 'var(--zen-tertiary-text)' }}>{presenceCounts.total} online</span>
+            </div>
+          </div>
+
+          <div className="divider" style={{ margin: '0 16px' }} />
+
+          {/* Search */}
+          {onlinePeers.length > 3 && (
+            <div style={{ padding: '4px 16px' }}>
+              <input
+                className="search-input"
+                placeholder="🔍 Search team..."
+                value={searchText}
+                onChange={(e) => setSearchText(e.target.value)}
+              />
+            </div>
+          )}
+
+          {/* Team List */}
+          <div className="team-list">
+            {filteredPeers.length === 0 ? (
+              <div style={{ textAlign: 'center', padding: 20, color: 'var(--zen-tertiary-text)', fontSize: 12 }}>
+                {onlinePeers.length === 0 ? 'No team members online' : 'No matches'}
+              </div>
+            ) : (
+              filteredPeers.map((peer) => (
+                <div key={peer.id}>
+                  <div className="team-member-row">
+                    <div className="member-avatar" style={{ background: peer.avatarColor || '#8E8E93' }}>
+                      {peer.avatarImageData ? (
+                        <img src={`data:image/png;base64,${peer.avatarImageData}`} style={{ width: '100%', height: '100%', borderRadius: '50%', objectFit: 'cover' }} />
+                      ) : peer.avatarEmoji ? (
+                        peer.avatarEmoji
+                      ) : (
+                        <span style={{ fontSize: 12, fontWeight: 600, color: 'white' }}>{peer.name.charAt(0).toUpperCase()}</span>
+                      )}
+                    </div>
+                    <div className="member-info">
+                      <div className="member-name">{peer.name}</div>
+                      {peer.activeStatusMessage ? (
+                        <div className="member-message">
+                          <MessageCircle size={10} /> {peer.activeStatusMessage}
+                        </div>
+                      ) : (
+                        <div className="member-status-text" style={{ color: getStatusColor(peer.status) }}>
+                          {peer.status}
+                        </div>
+                      )}
+                    </div>
+                    {pendingRequests[peer.id] ? (
+                      <button
+                        className="btn btn-secondary"
+                        style={{ fontSize: 9, padding: '2px 6px', flexShrink: 0 }}
+                        onClick={() => handleCancelRequest(peer.id)}
+                      >
+                        Cancel
+                      </button>
+                    ) : peer.status === AvailabilityStatus.Focused ? (
+                      (currentUser.canSendEmergency || currentUser.isAdmin) ? (
+                        <button
+                          className="btn btn-danger"
+                          style={{ fontSize: 9, padding: '2px 6px', flexShrink: 0 }}
+                          onClick={() => handleSendEmergencyRequest(peer.id)}
+                        >
+                          🚨 Urgent
+                        </button>
+                      ) : null
+                    ) : (
+                      <button
+                        className={messagePopup === peer.id ? 'btn btn-danger' : 'btn btn-primary'}
+                        style={{ fontSize: 9, padding: '2px 6px', flexShrink: 0 }}
+                        onClick={() => {
+                          setMessagePopup(messagePopup === peer.id ? null : peer.id);
+                          setMessageText('');
+                        }}
+                      >
+                        {messagePopup === peer.id ? 'Close' : 'Request'}
+                      </button>
+                    )}
+                    <span className={`status-dot ${peer.status}`} />
+                  </div>
+                  {/* Meeting request message popup */}
+                  {messagePopup === peer.id && (
+                    <div style={{
+                      margin: '4px 12px 8px',
+                      padding: 10,
+                      background: 'var(--zen-tertiary-bg)',
+                      borderRadius: 8,
+                      border: '1px solid var(--zen-divider)',
+                    }}>
+                      <input
+                        className="text-input"
+                        placeholder="Add a message (optional)..."
+                        value={messageText}
+                        onChange={(e) => setMessageText(e.target.value)}
+                        autoFocus
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter') {
+                            handleSendRequest(peer.id, messageText || undefined);
+                          }
+                          if (e.key === 'Escape') {
+                            setMessagePopup(null);
+                            setMessageText('');
+                          }
+                        }}
+                        style={{ fontSize: 11, marginBottom: 6 }}
+                      />
+                      <div style={{ display: 'flex', gap: 6, justifyContent: 'flex-end' }}>
+                        <button
+                          className="btn btn-secondary"
+                          style={{ fontSize: 9, padding: '2px 8px' }}
+                          onClick={() => {
+                            handleSendRequest(peer.id);
+                          }}
+                        >
+                          Skip
+                        </button>
+                        <button
+                          className="btn btn-primary"
+                          style={{ fontSize: 9, padding: '2px 8px' }}
+                          onClick={() => {
+                            handleSendRequest(peer.id, messageText || undefined);
+                          }}
+                        >
+                          Send
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              ))
+            )}
+          </div>
+        </>
       )}
 
       {/* Footer */}
       <div className="footer">
         <div className="footer-utils">
           <NotificationsPanel isBasecampConnected={bcConnected} />
-          <button className="footer-icon-btn" onClick={() => window.zenstate.openDashboard('settings')} title="Settings">
+          <button className="footer-icon-btn" onClick={() => { window.zenstate.openDashboard('settings'); window.zenstate.closePopover(); }} title="Settings">
             <Settings size={15} />
           </button>
           <button
@@ -873,7 +873,7 @@ export default function MenuBarView({ currentUser, peers, timerState, statusReve
             <Megaphone size={15} />
           </button>
         </div>
-        <button className="footer-action-btn" onClick={() => window.zenstate.openDashboard()}>
+        <button className="footer-action-btn" onClick={() => { window.zenstate.openDashboard(); window.zenstate.closePopover(); }}>
           <LayoutDashboard size={13} />
           <span>Dashboard</span>
         </button>

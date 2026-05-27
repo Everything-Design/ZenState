@@ -1,6 +1,6 @@
 {
   "name": "zenstate",
-  "version": "5.2.0",
+  "version": "5.2.1",
   "description": "ZenState - Everything Flow",
   "main": "dist/main/index.js",
   "scripts": {
@@ -51,11 +51,15 @@
       "target": [
         {
           "target": "dmg",
-          "arch": ["arm64"]
+          "arch": [
+            "arm64"
+          ]
         },
         {
           "target": "zip",
-          "arch": ["arm64"]
+          "arch": [
+            "arm64"
+          ]
         }
       ],
       "entitlements": "build/entitlements.mac.plist",
@@ -64,7 +68,9 @@
         {
           "from": "resources/wifi-info",
           "to": "wifi-info",
-          "filter": ["**/*"]
+          "filter": [
+            "**/*"
+          ]
         }
       ],
       "extendInfo": {

@@ -57,6 +57,7 @@ let popoverWindow: BrowserWindow | null = null;
 let dashboardWindow: BrowserWindow | null = null;
 let miniTimerWindow: BrowserWindow | null = null;
 let networking: NetworkingService | null = null;
+let isQuitting = false;
 
 const persistence = new PersistenceService();
 const timeTracker = new TimeTracker(persistence);
@@ -127,6 +128,51 @@ function getRendererURL(page: string): string {
   return `file://${path.join(__dirname, '../renderer', page)}`;
 }
 
+function wireDashboardWindow(win: BrowserWindow) {
+  win.on('close', (e) => {
+    if (!isQuitting) {
+      e.preventDefault();
+      win.hide();
+      if (process.platform === 'darwin' && !popoverWindow?.isVisible()) {
+        app.dock?.hide();
+      }
+    }
+  });
+
+  win.on('closed', () => {
+    if (dashboardWindow === win) {
+      dashboardWindow = null;
+    }
+    if (process.platform === 'darwin' && !popoverWindow?.isVisible()) {
+      app.dock?.hide();
+    }
+  });
+}
+
+function showDashboard(tab?: string) {
+  if (popoverWindow && !popoverWindow.isDestroyed() && popoverWindow.isVisible()) {
+    popoverWindow.hide();
+  }
+  if (!dashboardWindow || dashboardWindow.isDestroyed()) {
+    dashboardWindow = createDashboardWindow(getRendererURL('dashboard.html'));
+    wireDashboardWindow(dashboardWindow);
+    if (process.platform === 'darwin') app.dock?.show();
+    if (tab) {
+      dashboardWindow.webContents.once('did-finish-load', () => {
+        dashboardWindow?.webContents.send('dashboard:switch-tab', tab);
+      });
+    }
+  } else {
+    if (dashboardWindow.isMinimized()) dashboardWindow.restore();
+    dashboardWindow.show();
+    dashboardWindow.focus();
+    if (process.platform === 'darwin') app.dock?.show();
+    if (tab) {
+      dashboardWindow.webContents.send('dashboard:switch-tab', tab);
+    }
+  }
+}
+
 // ── App Lifecycle ──────────────────────────────────────────────
 
 app.on('ready', async () => {
@@ -150,33 +196,20 @@ app.on('ready', async () => {
   // for another reason we surface a dialog instead of dying silently.
   try {
     createTray({
-    onClick: () => togglePopover(),
-    onStatusChange: (status: AvailabilityStatus) => {
-      const u = persistence.getUser();
-      if (u) {
-        u.status = status;
-        persistence.saveUser(u);
-        networking?.updateUser(u);
-        updateTrayIcon(u, 0, timerIsRunning);
-        broadcastToWindows(IPC.PEER_UPDATED, u);
-      }
-    },
-    onOpenDashboard: () => {
-      if (!dashboardWindow || dashboardWindow.isDestroyed()) {
-        dashboardWindow = createDashboardWindow(getRendererURL('dashboard.html'));
-        if (process.platform === 'darwin') app.dock?.show();
-        dashboardWindow.on('closed', () => {
-          dashboardWindow = null;
-          if (process.platform === 'darwin' && !popoverWindow?.isVisible()) {
-            app.dock?.hide();
-          }
-        });
-      } else {
-        if (dashboardWindow.isMinimized()) dashboardWindow.restore();
-        dashboardWindow.show();
-        dashboardWindow.focus();
-      }
-    },
+      onClick: () => togglePopover(),
+      onStatusChange: (status: AvailabilityStatus) => {
+        const u = persistence.getUser();
+        if (u) {
+          u.status = status;
+          persistence.saveUser(u);
+          networking?.updateUser(u);
+          updateTrayIcon(u, 0, timerIsRunning);
+          broadcastToWindows(IPC.PEER_UPDATED, u);
+        }
+      },
+      onOpenDashboard: () => {
+        showDashboard();
+      },
     });
   } catch (err) {
     console.error('[startup] createTray failed:', err);
@@ -219,14 +252,7 @@ app.on('ready', async () => {
   // boot silently to the menu bar when a user was already signed in, leaving
   // many users unsure whether the app was running. The onboarding path
   // already opened the dashboard; this just unifies the two.
-  dashboardWindow = createDashboardWindow(getRendererURL('dashboard.html'));
-  if (process.platform === 'darwin') app.dock?.show();
-  dashboardWindow.on('closed', () => {
-    dashboardWindow = null;
-    if (process.platform === 'darwin' && !popoverWindow?.isVisible()) {
-      app.dock?.hide();
-    }
-  });
+  showDashboard();
 
   // Auto-update (production only)
   if (!isDev()) {
@@ -296,14 +322,7 @@ app.on('render-process-gone', (_event, webContents, details) => {
   // it's the most visible surface and losing it looks like the app crashed.
   if (url.includes('dashboard.html') && (!dashboardWindow || dashboardWindow.isDestroyed())) {
     try {
-      dashboardWindow = createDashboardWindow(getRendererURL('dashboard.html'));
-      if (process.platform === 'darwin') app.dock?.show();
-      dashboardWindow.on('closed', () => {
-        dashboardWindow = null;
-        if (process.platform === 'darwin' && !popoverWindow?.isVisible()) {
-          app.dock?.hide();
-        }
-      });
+      showDashboard();
     } catch (recoverErr) {
       console.error('Failed to recreate dashboard after renderer crash:', recoverErr);
     }
@@ -317,6 +336,7 @@ app.on('child-process-gone', (_event, details) => {
 });
 
 app.on('before-quit', () => {
+  isQuitting = true;
   networking?.stop();
   globalShortcut.unregisterAll();
 });
@@ -1655,56 +1675,22 @@ function setupIPC() {
 
   // Window management
   ipcMain.on(IPC.OPEN_DASHBOARD, (_e, tab?: string) => {
-    if (!dashboardWindow || dashboardWindow.isDestroyed()) {
-      dashboardWindow = createDashboardWindow(getRendererURL('dashboard.html'));
-      if (process.platform === 'darwin') app.dock?.show();
-      dashboardWindow.on('closed', () => {
-        dashboardWindow = null;
-        if (process.platform === 'darwin' && !popoverWindow?.isVisible()) {
-          app.dock?.hide();
-        }
-      });
-      if (tab) {
-        dashboardWindow.webContents.once('did-finish-load', () => {
-          dashboardWindow?.webContents.send('dashboard:switch-tab', tab);
-        });
-      }
-    } else {
-      if (dashboardWindow.isMinimized()) dashboardWindow.restore();
-      dashboardWindow.show();
-      dashboardWindow.focus();
-      if (tab) {
-        dashboardWindow.webContents.send('dashboard:switch-tab', tab);
-      }
-    }
+    showDashboard(tab);
   });
 
   // Open the dashboard, navigate to Plan, and auto-open the pin picker.
   // Driven from the mini-timer pill's "Pin another to-do" link — saves the
   // user a multi-step navigation when they're already in flow.
   ipcMain.on(IPC.OPEN_DASHBOARD_AND_PIN, () => {
-    const navigate = (win: BrowserWindow) => {
-      win.webContents.send('dashboard:switch-tab', 'plan');
-      win.webContents.send('plan:open-picker');
-    };
-    if (!dashboardWindow || dashboardWindow.isDestroyed()) {
-      dashboardWindow = createDashboardWindow(getRendererURL('dashboard.html'));
-      if (process.platform === 'darwin') app.dock?.show();
-      dashboardWindow.on('closed', () => {
-        dashboardWindow = null;
-        if (process.platform === 'darwin' && !popoverWindow?.isVisible()) {
-          app.dock?.hide();
-        }
-      });
-      // Fire navigation + picker open once the renderer is ready to receive.
-      dashboardWindow.webContents.once('did-finish-load', () => {
-        if (dashboardWindow) navigate(dashboardWindow);
-      });
-    } else {
-      if (dashboardWindow.isMinimized()) dashboardWindow.restore();
-      dashboardWindow.show();
-      dashboardWindow.focus();
-      navigate(dashboardWindow);
+    showDashboard('plan');
+    if (dashboardWindow) {
+      if (dashboardWindow.webContents.isLoading()) {
+        dashboardWindow.webContents.once('did-finish-load', () => {
+          dashboardWindow?.webContents.send('plan:open-picker');
+        });
+      } else {
+        dashboardWindow.webContents.send('plan:open-picker');
+      }
     }
   });
 

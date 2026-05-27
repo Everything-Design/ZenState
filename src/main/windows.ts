@@ -14,6 +14,7 @@ export function createPopoverWindow(url: string): BrowserWindow {
     minimizable: false,
     maximizable: false,
     fullscreenable: false,
+    closable: false,
     skipTaskbar: true,
     transparent: isMac,
     // `type: 'panel'` makes this an NSPanel on macOS — non-activating so it
@@ -70,7 +71,15 @@ export function createPopoverWindow(url: string): BrowserWindow {
     // focused, the user is interacting with our own app — not "outside" —
     // so don't dismiss the popover.
     const ownWindows = BrowserWindow.getAllWindows();
-    const focusedIsOwn = ownWindows.some((w) => w !== win && !w.isDestroyed() && w.isFocused());
+    const focusedIsOwn = ownWindows.some((w) => {
+      if (w === win || w.isDestroyed() || !w.isFocused()) return false;
+      try {
+        const url = w.webContents?.getURL() || '';
+        return url.includes('mini-timer.html');
+      } catch {
+        return false;
+      }
+    });
     if (focusedIsOwn) return;
     win.hide();
   });
@@ -131,6 +140,7 @@ export function createMiniTimerWindow(url: string, position?: { x: number; y: nu
     hasShadow: false,
     focusable: true,
     paintWhenInitiallyHidden: true,
+    closable: false,
     ...(isMac ? { type: 'panel' as const } : {}),
     webPreferences: {
       nodeIntegration: false,
@@ -195,6 +205,9 @@ export function createAlertWindow(url: string, options: { width: number; height:
     resizable: false,
     movable: true,
     closable: true,
+    minimizable: false,
+    maximizable: false,
+    fullscreenable: false,
     hasShadow: true,
     webPreferences: {
       nodeIntegration: false,

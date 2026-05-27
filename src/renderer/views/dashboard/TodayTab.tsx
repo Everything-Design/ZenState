@@ -67,6 +67,16 @@ export default function TodayTab({ timerState, records, onOpenSettings, onRefres
   // Lets the user record time they spent on a pinned task without having
   // started the live timer.
   const [logTimeFor, setLogTimeFor] = useState<PinnedTodo | null>(null);
+  const [todoSearchText, setTodoSearchText] = useState('');
+
+  const filteredItems = useMemo(() => {
+    if (!todoSearchText.trim()) return plan.items;
+    const q = todoSearchText.toLowerCase();
+    return plan.items.filter((item) =>
+      item.content.toLowerCase().includes(q) ||
+      (item.projectName && item.projectName.toLowerCase().includes(q))
+    );
+  }, [plan.items, todoSearchText]);
 
   // Initial load + reactive updates from the main process. Subscribe FIRST,
   // then fetch — otherwise an event arriving between the request and its
@@ -86,8 +96,8 @@ export default function TodayTab({ timerState, records, onOpenSettings, onRefres
     window.zenstate.todayGet().then((res) => {
       if (!eventArrived) setPlan(res.plan);
       setRecents(res.recents);
-    }).catch(() => {});
-    window.zenstate.bcGetAuthState().then(setAuthState).catch(() => {});
+    }).catch(() => { });
+    window.zenstate.bcGetAuthState().then(setAuthState).catch(() => { });
     return () => { offChanged(); offPicker(); };
   }, []);
 
@@ -229,26 +239,82 @@ export default function TodayTab({ timerState, records, onOpenSettings, onRefres
           />
         ) : (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-2)' }}>
-            {plan.items.map((item) => (
-              <PinnedRow
-                key={item.todoId}
-                item={item}
-                running={isRunning(item)}
-                paused={isRunning(item) && timerState.isPaused}
-                trackedToday={trackedByTodoId.get(item.todoId) ?? 0}
-                editingEstimate={editingEstimate === item.todoId}
-                onStartEditEstimate={() => setEditingEstimate(item.todoId)}
-                onSaveEstimate={(min) => handleSetEstimate(item.todoId, min)}
-                onCancelEditEstimate={() => setEditingEstimate(null)}
-                onStartTimer={() => handleStartTimer(item)}
-                onPauseTimer={() => window.zenstate.pauseTimer()}
-                onResumeTimer={() => window.zenstate.resumeTimer()}
-                onStopTimer={() => window.zenstate.stopTimer()}
-                onUnpin={() => handleUnpin(item.todoId)}
-                onToggleComplete={() => handleToggleComplete(item.todoId)}
-                onLogTime={() => setLogTimeFor(item)}
-              />
-            ))}
+            {plan.items.length > 0 && (
+              <div style={{ position: 'relative', marginBottom: 'var(--space-1)' }}>
+                <Search size={14} style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', color: 'var(--zen-tertiary-text)' }} />
+                <input
+                  placeholder="Filter today's tasks..."
+                  value={todoSearchText}
+                  onChange={(e) => setTodoSearchText(e.target.value)}
+                  style={{
+                    width: '100%',
+                    padding: '9px 12px 9px 34px',
+                    fontSize: 'var(--text-sm)',
+                    background: 'var(--zen-tertiary-bg)',
+                    border: '1px solid var(--zen-divider)',
+                    borderRadius: 'var(--radius-md)',
+                    color: 'var(--zen-text)',
+                    outline: 'none',
+                    fontFamily: 'inherit',
+                    transition: 'border-color var(--duration-quick) var(--ease-standard), background var(--duration-quick) var(--ease-standard)',
+                  }}
+                  onFocus={(e) => {
+                    e.currentTarget.style.borderColor = 'var(--zen-primary)';
+                    e.currentTarget.style.background = 'rgba(255,255,255,0.02)';
+                  }}
+                  onBlur={(e) => {
+                    e.currentTarget.style.borderColor = 'var(--zen-divider)';
+                    e.currentTarget.style.background = 'var(--zen-tertiary-bg)';
+                  }}
+                />
+                {todoSearchText && (
+                  <button
+                    onClick={() => setTodoSearchText('')}
+                    style={{
+                      position: 'absolute',
+                      right: 12,
+                      top: '50%',
+                      transform: 'translateY(-50%)',
+                      background: 'none',
+                      border: 'none',
+                      padding: 0,
+                      cursor: 'pointer',
+                      color: 'var(--zen-tertiary-text)',
+                      display: 'flex',
+                    }}
+                  >
+                    <X size={14} />
+                  </button>
+                )}
+              </div>
+            )}
+
+            {filteredItems.length === 0 ? (
+              <div style={{ textAlign: 'center', padding: 'var(--space-6) 0', color: 'var(--zen-tertiary-text)', fontSize: 'var(--text-sm)', border: '1px dashed var(--zen-divider)', borderRadius: 'var(--radius-md)' }}>
+                No tasks match "{todoSearchText}"
+              </div>
+            ) : (
+              filteredItems.map((item) => (
+                <PinnedRow
+                  key={item.todoId}
+                  item={item}
+                  running={isRunning(item)}
+                  paused={isRunning(item) && timerState.isPaused}
+                  trackedToday={trackedByTodoId.get(item.todoId) ?? 0}
+                  editingEstimate={editingEstimate === item.todoId}
+                  onStartEditEstimate={() => setEditingEstimate(item.todoId)}
+                  onSaveEstimate={(min) => handleSetEstimate(item.todoId, min)}
+                  onCancelEditEstimate={() => setEditingEstimate(null)}
+                  onStartTimer={() => handleStartTimer(item)}
+                  onPauseTimer={() => window.zenstate.pauseTimer()}
+                  onResumeTimer={() => window.zenstate.resumeTimer()}
+                  onStopTimer={() => window.zenstate.stopTimer()}
+                  onUnpin={() => handleUnpin(item.todoId)}
+                  onToggleComplete={() => handleToggleComplete(item.todoId)}
+                  onLogTime={() => setLogTimeFor(item)}
+                />
+              ))
+            )}
             <button
               onClick={() => setPickerOpen(true)}
               style={{
@@ -1074,7 +1140,7 @@ function CreateTodoInline({ accountId, onCreated }: CreateTodoInlineProps) {
     setLoadingP(true);
     zs.bcListProjects()
       .then((res) => { if (res.ok) setProjects(res.data); })
-      .catch(() => {})
+      .catch(() => { })
       .finally(() => setLoadingP(false));
   }, [projects.length]);
 
@@ -1087,7 +1153,7 @@ function CreateTodoInline({ accountId, onCreated }: CreateTodoInlineProps) {
     setLoadingL(true);
     zs.bcListTodoLists(p.id, p.todoSetId)
       .then((res) => { if (res.ok) setLists(res.data); })
-      .catch(() => {})
+      .catch(() => { })
       .finally(() => setLoadingL(false));
   };
 
@@ -1485,22 +1551,22 @@ function BrowseTab({ alreadyPinned, accountId, pending, onRowClick }: BrowseTabP
       </div>
 
       {loading && <TabLoading label={`Loading ${step}…`} />}
-      {error && <TabError message={error} onRetry={step === 'projects' ? fetchProjects : () => {}} />}
+      {error && <TabError message={error} onRetry={step === 'projects' ? fetchProjects : () => { }} />}
 
       {!loading && !error && step === 'projects' && (
         filteredProjects.length === 0
           ? <TabEmpty label="No projects match." />
           : filteredProjects.map((p) => (
-              <BrowseRow key={p.id} title={p.name} subtitle={p.description} onClick={() => goToLists(p)} />
-            ))
+            <BrowseRow key={p.id} title={p.name} subtitle={p.description} onClick={() => goToLists(p)} />
+          ))
       )}
 
       {!loading && !error && step === 'lists' && (
         filteredLists.length === 0
           ? <TabEmpty label="No lists match." />
           : filteredLists.map((l) => (
-              <BrowseRow key={l.id} title={l.title} subtitle={l.description} onClick={() => goToTodos(l)} />
-            ))
+            <BrowseRow key={l.id} title={l.title} subtitle={l.description} onClick={() => goToTodos(l)} />
+          ))
       )}
 
       {!loading && !error && step === 'todos' && (

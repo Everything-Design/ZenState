@@ -1,5 +1,5 @@
 import React, { useEffect, useState, useRef, useCallback } from 'react';
-import { Pause, Play, Square, ChevronDown, Briefcase, StickyNote, Video } from 'lucide-react';
+import { Pause, Play, Square, ChevronDown, Briefcase, StickyNote, Video, Search, X } from 'lucide-react';
 import { IPC, TodayPlan, PinnedTodo, AppSettings } from '../shared/types';
 
 interface TimerState {
@@ -32,6 +32,7 @@ export default function MiniTimerApp() {
   const [autoDim, setAutoDim] = useState(false);
   const [dimmed, setDimmed] = useState(false);
   const [notes, setNotes] = useState('');
+  const [taskSearchText, setTaskSearchText] = useState('');
   // Meeting mode — suppresses idle pause for the active session. Toggled
   // from the Notes header in this panel; main process owns the source of
   // truth and broadcasts changes (so the in-meeting "I'm in a meeting" path
@@ -168,14 +169,15 @@ export default function MiniTimerApp() {
       // switchable item (≈50) + a bit of slack for headings/padding. Capped so
       // the pill never balloons past a reasonable size on small screens.
       const itemCount = plan?.items.length ?? 0;
-      // Item rows + the bottom "+ Pin another to-do" button (~32px)
-      const switcherHeight = (itemCount > 0 ? 24 + 50 * itemCount + 16 : 56) + 32;
+      // Item rows + the bottom "+ Pin another to-do" button (~32px) + search bar (~34px)
+      const switcherHeight = (itemCount > 0 ? 24 + 50 * itemCount + 16 + 34 : 56) + 32;
       const height = Math.min(540, 36 + NOTES_SECTION_H + switcherHeight);
       window.zenstate.miniTimerResize({ width: EXPANDED_W, height });
     } else {
+      setTaskSearchText('');
       window.zenstate.miniTimerResize({ width: COMPACT_W, height: COMPACT_H });
     }
-  }, [expanded, plan]);
+  }, [expanded, plan, setTaskSearchText]);
 
   // Collapse if nothing is running anymore (avoid orphaned expanded state).
   useEffect(() => {
@@ -252,9 +254,10 @@ export default function MiniTimerApp() {
       accountId: p.accountId, projectId: p.projectId, todoId: p.todoId,
       todoListId: p.todoListId, projectName: p.projectName,
     });
+    setTaskSearchText('');
     setExpanded(false);
     window.zenstate.miniTimerResize({ width: COMPACT_W, height: COMPACT_H });
-  }, [timer.isRunning, flushNotes]);
+  }, [timer.isRunning, flushNotes, setTaskSearchText]);
 
   // ── Render ────────────────────────────────────────────────────
   const accent = timer.isPaused ? 'var(--status-occupied, #ff9500)' : 'var(--status-available, #34c759)';
@@ -266,6 +269,15 @@ export default function MiniTimerApp() {
   // Users can still see their full list (including done items) on the
   // dashboard Plan tab and in the popover.
   const switchablePinned = (plan?.items ?? []).filter((p) => p.content !== timer.taskLabel && !p.completedAt);
+
+  const filteredSwitchablePinned = React.useMemo(() => {
+    if (!taskSearchText.trim()) return switchablePinned;
+    const q = taskSearchText.toLowerCase();
+    return switchablePinned.filter((p) =>
+      p.content.toLowerCase().includes(q) ||
+      (p.projectName && p.projectName.toLowerCase().includes(q))
+    );
+  }, [switchablePinned, taskSearchText]);
 
   return (
     <div
@@ -427,15 +439,71 @@ export default function MiniTimerApp() {
             </div>
           ) : (
             <>
-              <SectionHeading>Today</SectionHeading>
-              {switchablePinned.map((p) => (
-                <SwitchRow
-                  key={`p-${p.todoId}`}
-                  title={p.content}
-                  subtitle={p.projectName}
-                  onClick={() => switchToPinned(p)}
+              {/* Search Box */}
+              <div style={{ padding: '4px 12px 6px', position: 'relative' }}>
+                <Search size={10} style={{ position: 'absolute', left: 20, top: '50%', transform: 'translateY(-50%)', opacity: 0.4 }} />
+                <input
+                  placeholder="Search pinned tasks..."
+                  value={taskSearchText}
+                  onChange={(e) => setTaskSearchText(e.target.value)}
+                  style={{
+                    width: '100%',
+                    padding: '5px 8px 5px 22px',
+                    fontSize: 10,
+                    background: 'rgba(255,255,255,0.03)',
+                    border: '1px solid rgba(255,255,255,0.06)',
+                    borderRadius: 4,
+                    color: '#e6edf3',
+                    outline: 'none',
+                    fontFamily: 'inherit',
+                    boxSizing: 'border-box',
+                  }}
+                  onFocus={(e) => {
+                    e.currentTarget.style.borderColor = 'rgba(255,255,255,0.18)';
+                    e.currentTarget.style.background = 'rgba(255,255,255,0.05)';
+                  }}
+                  onBlur={(e) => {
+                    e.currentTarget.style.borderColor = 'rgba(255,255,255,0.06)';
+                    e.currentTarget.style.background = 'rgba(255,255,255,0.03)';
+                  }}
                 />
-              ))}
+                {taskSearchText && (
+                  <button
+                    onClick={() => setTaskSearchText('')}
+                    style={{
+                      position: 'absolute',
+                      right: 20,
+                      top: '50%',
+                      transform: 'translateY(-50%)',
+                      background: 'none',
+                      border: 'none',
+                      padding: 0,
+                      cursor: 'pointer',
+                      color: 'rgba(255,255,255,0.4)',
+                      display: 'flex',
+                      alignItems: 'center',
+                    }}
+                  >
+                    <X size={10} />
+                  </button>
+                )}
+              </div>
+
+              <SectionHeading>Today</SectionHeading>
+              {filteredSwitchablePinned.length === 0 ? (
+                <div style={{ padding: '14px 12px', fontSize: 10, color: 'rgba(230,237,243,0.45)', textAlign: 'center' }}>
+                  No tasks match "{taskSearchText}"
+                </div>
+              ) : (
+                filteredSwitchablePinned.map((p) => (
+                  <SwitchRow
+                    key={`p-${p.todoId}`}
+                    title={p.content}
+                    subtitle={p.projectName}
+                    onClick={() => switchToPinned(p)}
+                  />
+                ))
+              )}
             </>
           )}
 
