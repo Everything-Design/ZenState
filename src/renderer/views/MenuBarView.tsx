@@ -649,7 +649,7 @@ export default function MenuBarView({ currentUser, peers, timerState, statusReve
               <button
                 className="btn btn-secondary"
                 style={{ fontSize: 'var(--text-sm)' }}
-                onClick={() => { window.zenstate.openDashboard('today'); window.zenstate.closePopover(); }}
+                onClick={() => { window.zenstate.openDashboard('today'); }}
               >
                 Open Today
               </button>
@@ -688,6 +688,7 @@ export default function MenuBarView({ currentUser, peers, timerState, statusReve
                     </div>
                     <button
                       onClick={() => dismissPing(p.id)}
+                      aria-label="Close"
                       title="Dismiss"
                       style={{ background: 'transparent', border: 'none', cursor: 'pointer', color: 'var(--zen-tertiary-text)', display: 'flex', padding: 2, borderRadius: 4, flexShrink: 0 }}
                       onMouseEnter={(e) => e.currentTarget.style.color = 'var(--zen-text)'}
@@ -859,12 +860,12 @@ export default function MenuBarView({ currentUser, peers, timerState, statusReve
       <div className="footer">
         <div className="footer-utils">
           <NotificationsPanel isBasecampConnected={bcConnected} />
-          <button className="footer-icon-btn" onClick={() => { window.zenstate.openDashboard('settings'); window.zenstate.closePopover(); }} title="Settings">
+          <button className="footer-icon-btn" onClick={() => { window.zenstate.openDashboard('settings'); }} title="Settings">
             <Settings size={15} />
           </button>
           <button
             className="footer-icon-btn"
-            onClick={() => { window.zenstate.openDashboardAndPin(); window.zenstate.closePopover(); }}
+            onClick={() => { window.zenstate.openDashboardAndPin(); }}
             title="Pin another to-do"
           >
             <Pin size={15} />
@@ -873,7 +874,7 @@ export default function MenuBarView({ currentUser, peers, timerState, statusReve
             <Megaphone size={15} />
           </button>
         </div>
-        <button className="footer-action-btn" onClick={() => { window.zenstate.openDashboard(); window.zenstate.closePopover(); }}>
+        <button className="footer-action-btn" onClick={() => { window.zenstate.openDashboard(); }}>
           <LayoutDashboard size={13} />
           <span>Dashboard</span>
         </button>

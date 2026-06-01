@@ -130,12 +130,21 @@ function getRendererURL(page: string): string {
 
 function wireDashboardWindow(win: BrowserWindow) {
   win.on('close', (e) => {
-    if (!isQuitting) {
-      e.preventDefault();
+    if (isQuitting) return;
+    if (win.isDestroyed()) return;
+    e.preventDefault();
+    // v5.3.1 — Platform-specific close behaviour:
+    //   • Windows: minimize so the taskbar entry stays clickable.
+    //   • macOS: hide the window but DO NOT toggle dock visibility. v5.3.0
+    //     hid the dock when no popover/pill was visible; this caused a Mac
+    //     glitch where clicking the tray icon after close — with the app in
+    //     `.accessory` mode — fired the popover blur path immediately and
+    //     looked like "app closed." Keeping the activation policy stable
+    //     (regular while running) avoids the policy-flip race entirely.
+    if (process.platform === 'win32') {
+      win.minimize();
+    } else {
       win.hide();
-      if (process.platform === 'darwin' && !popoverWindow?.isVisible()) {
-        app.dock?.hide();
-      }
     }
   });
 
@@ -143,10 +152,22 @@ function wireDashboardWindow(win: BrowserWindow) {
     if (dashboardWindow === win) {
       dashboardWindow = null;
     }
-    if (process.platform === 'darwin' && !popoverWindow?.isVisible()) {
-      app.dock?.hide();
-    }
+    // v5.3.1 — Same rationale as the `'close'` handler: don't flip the dock
+    // here either. The dock stays visible until app quit.
   });
+}
+
+function sendSwitchTab(win: BrowserWindow, tab: string) {
+  // Sending to a still-loading webContents can be silently dropped because
+  // the renderer's IPC listener hasn't registered yet. Queue via
+  // did-finish-load if the page is mid-load, otherwise send immediately.
+  if (win.webContents.isLoading()) {
+    win.webContents.once('did-finish-load', () => {
+      if (!win.isDestroyed()) win.webContents.send('dashboard:switch-tab', tab);
+    });
+  } else {
+    win.webContents.send('dashboard:switch-tab', tab);
+  }
 }
 
 function showDashboard(tab?: string) {
@@ -154,30 +175,44 @@ function showDashboard(tab?: string) {
     popoverWindow.hide();
   }
   if (!dashboardWindow || dashboardWindow.isDestroyed()) {
-    dashboardWindow = createDashboardWindow(getRendererURL('dashboard.html'));
-    wireDashboardWindow(dashboardWindow);
-    if (process.platform === 'darwin') app.dock?.show();
-    if (tab) {
-      dashboardWindow.webContents.once('did-finish-load', () => {
-        dashboardWindow?.webContents.send('dashboard:switch-tab', tab);
-      });
+    try {
+      dashboardWindow = createDashboardWindow(getRendererURL('dashboard.html'));
+    } catch (err) {
+      console.error('[showDashboard] createDashboardWindow failed:', err);
+      dashboardWindow = null;
+      return;
     }
+    wireDashboardWindow(dashboardWindow);
+    // v5.3.2 — Dock stays visible from app start; no need to toggle.
+    if (tab) sendSwitchTab(dashboardWindow, tab);
   } else {
     if (dashboardWindow.isMinimized()) dashboardWindow.restore();
     dashboardWindow.show();
     dashboardWindow.focus();
-    if (process.platform === 'darwin') app.dock?.show();
-    if (tab) {
-      dashboardWindow.webContents.send('dashboard:switch-tab', tab);
-    }
+    if (tab) sendSwitchTab(dashboardWindow, tab);
   }
 }
 
 // ── App Lifecycle ──────────────────────────────────────────────
 
 app.on('ready', async () => {
-  // macOS: Set Dock icon and hide it (menu bar app)
+  // macOS: Set Dock icon + force .regular activation policy.
+  //
+  // v5.3.3 — Explicit `setActivationPolicy('regular')`. Belt-and-suspenders
+  // defence against macOS LaunchServices caching the bundle's activation
+  // state from earlier versions that called `app.dock?.hide()`. Per Apple
+  // docs, going TO `.regular` is always safe (the known reliability issue
+  // is going `.regular` → `.accessory`). Forces the dock icon to appear on
+  // launch regardless of any cached state.
+  //
+  // Aligns with the Fantastical / Things 3 / Apple HIG model:
+  //   • Stable `.regular` policy for the whole lifetime
+  //   • Dashboard is a normal NSWindow-style BrowserWindow
+  //   • Popover is `type: 'panel'` (NSPanel) — non-activating, menu-bar-style
+  //   • Dock click reopens dashboard via `app.on('activate', ...)`
+  //   • Close → preventDefault + hide; never calls `app.dock?.hide/show`
   if (process.platform === 'darwin') {
+    try { app.setActivationPolicy('regular'); } catch (e) { console.warn('[startup] setActivationPolicy failed:', e); }
     const iconPath = path.join(__dirname, '../../build/icon.png');
     try {
       const dockIcon = nativeImage.createFromPath(iconPath);
@@ -185,7 +220,6 @@ app.on('ready', async () => {
         app.dock?.setIcon(dockIcon);
       }
     } catch (_) { /* icon not found in dev — that's ok */ }
-    app.dock?.hide();
   }
 
   // Create tray with callbacks for context menu actions.
@@ -315,6 +349,11 @@ app.on('render-process-gone', (_event, webContents, details) => {
   const url = (() => { try { return webContents.getURL(); } catch { return '<unavailable>'; } })();
   console.error(`Renderer crashed (${details.reason}, exit=${details.exitCode}, url=${url})`);
 
+  // v5.3 — Bail if we're already quitting. Recreating windows during the
+  // teardown loop would race with `setClosable(true)` and could resurrect a
+  // window that escapes the closable-unlock pass.
+  if (isQuitting) return;
+
   // Identify which surface died by URL pattern and recreate it lazily.
   // Popover + mini-timer recover on next user action (togglePopover already
   // re-creates a destroyed popover; the pill is re-shown on next startTimer).
@@ -350,16 +389,25 @@ app.on('before-quit', () => {
   globalShortcut.unregisterAll();
 });
 
+// v5.3.2 — macOS Dock icon click. Without this handler, clicking the dock
+// icon while the dashboard is hidden does nothing — the user has no way to
+// bring it back from the dock (only via the tray icon). Now matches Mac
+// convention: click dock icon → window reappears.
+app.on('activate', () => {
+  if (isQuitting) return;
+  showDashboard();
+});
+
 app.on('second-instance', () => {
   // v5.1.4 — User double-clicked the app icon while it was already running.
   // Bring the dashboard to front if it exists (more useful than toggling the
   // popover, which requires a signed-in user and a tray-positioned context).
   // Falls back to the popover toggle if the dashboard isn't around — preserves
   // the prior behaviour for the menu-bar-only flow.
+  // v5.3 — Route through `showDashboard()` so this path is consistent with
+  // tray + IPC entry points (hides popover, restores dock on Mac).
   if (dashboardWindow && !dashboardWindow.isDestroyed()) {
-    if (dashboardWindow.isMinimized()) dashboardWindow.restore();
-    dashboardWindow.show();
-    dashboardWindow.focus();
+    showDashboard();
   } else {
     togglePopover();
   }
@@ -421,6 +469,13 @@ function togglePopover() {
   popoverWindow.setAlwaysOnTop(true, 'screen-saver');
   if (process.platform === 'darwin') {
     popoverWindow.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
+    // v5.3.4 — `visibleOnFullScreen: true` carries a documented Electron
+    // side effect (issue #31538): it hides the Dock icon by setting
+    // `NSWindowCollectionBehaviorFullScreenAuxiliary` on the app's window
+    // collection. Immediately re-asserting `.regular` policy restores the
+    // Dock icon without losing the cross-Space visibility the popover
+    // needs. Each show re-applies the flag → each show must re-restore.
+    try { app.setActivationPolicy('regular'); } catch (e) { console.warn('[togglePopover] setActivationPolicy failed:', e); }
   }
 
   popoverWindow.show();
@@ -1692,14 +1747,18 @@ function setupIPC() {
   // user a multi-step navigation when they're already in flow.
   ipcMain.on(IPC.OPEN_DASHBOARD_AND_PIN, () => {
     showDashboard('plan');
-    if (dashboardWindow) {
-      if (dashboardWindow.webContents.isLoading()) {
-        dashboardWindow.webContents.once('did-finish-load', () => {
-          dashboardWindow?.webContents.send('plan:open-picker');
-        });
-      } else {
-        dashboardWindow.webContents.send('plan:open-picker');
-      }
+    if (!dashboardWindow || dashboardWindow.isDestroyed()) return;
+    const win = dashboardWindow;
+    // Race-safe: same isLoading guard as sendSwitchTab. Multiple
+    // did-finish-load listeners fire in registration order, so switch-tab
+    // (queued by sendSwitchTab inside showDashboard) lands before
+    // open-picker, ensuring the Plan view is mounted when the picker opens.
+    if (win.webContents.isLoading()) {
+      win.webContents.once('did-finish-load', () => {
+        if (!win.isDestroyed()) win.webContents.send('plan:open-picker');
+      });
+    } else {
+      win.webContents.send('plan:open-picker');
     }
   });
 
@@ -1767,6 +1826,13 @@ function setupIPC() {
     recentPings = [];
     if (miniTimerWindow && !miniTimerWindow.isDestroyed()) {
       miniTimerWindow.hide();
+    }
+    // v5.3 — Hide the popover too. It has `closable: false`, so leaving it
+    // alive across sign-out means it could intercept a Windows session-end
+    // (WM_CLOSE before before-quit fires) and stall the process exit. The
+    // tray icon will recreate the popover on next click anyway.
+    if (popoverWindow && !popoverWindow.isDestroyed() && popoverWindow.isVisible()) {
+      popoverWindow.hide();
     }
 
     // Disconnect Basecamp — this wipes the encrypted auth tokens from disk
@@ -2268,6 +2334,17 @@ function setupIPC() {
     }
   });
 
+  // v5.3 — Subtasks of a parent todo. Used by the pin picker (expandable
+  // rows) and Today tab (checklist under pinned rows). Time tracking stays
+  // on the parent — subtasks are display-only context.
+  ipcMain.handle(IPC.BC_GET_SUBTASKS, async (_e, data: { projectId: number; parentTodoId: number }) => {
+    try {
+      return { ok: true, data: await basecamp.api.getSubtasksForTodo(data.projectId, data.parentTodoId) };
+    } catch (err) {
+      return { ok: false, error: describeError(err, 'getSubtasksForTodo') };
+    }
+  });
+
   // v5.1.0 / B-3 fix — alert windows fetch their payload on mount via this
   // invoke as a fallback in case they missed the one-shot 'alert-data' send.
   // Identified by the caller's webContents id, matched against the cache
@@ -2448,6 +2525,25 @@ function setupIPC() {
     if (item) {
       if (item.completedAt) delete item.completedAt;
       else item.completedAt = new Date().toISOString();
+      persistence.saveTodayPlan(plan);
+      broadcastToWindows(IPC.TODAY_CHANGED, plan);
+    }
+    return plan;
+  });
+
+  // v5.3 — Toggle local check state for a subtask under a pinned todo.
+  // Stored as `subtaskCompletions[subtaskId] = ISO timestamp`. Never synced
+  // to Basecamp — purely a visual aid for the user working through a parent
+  // todo's subtask list while the timer runs on the parent.
+  ipcMain.handle(IPC.TODAY_TOGGLE_SUBTASK, (_e, data: { parentTodoId: number; subtaskId: number }) => {
+    const plan = persistence.getTodayPlan();
+    const item = plan.items.find((p) => p.todoId === data.parentTodoId);
+    if (item) {
+      const map = item.subtaskCompletions ?? {};
+      if (map[data.subtaskId]) delete map[data.subtaskId];
+      else map[data.subtaskId] = new Date().toISOString();
+      if (Object.keys(map).length === 0) delete item.subtaskCompletions;
+      else item.subtaskCompletions = map;
       persistence.saveTodayPlan(plan);
       broadcastToWindows(IPC.TODAY_CHANGED, plan);
     }

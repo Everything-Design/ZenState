@@ -35,12 +35,16 @@ export function createPopoverWindow(url: string): BrowserWindow {
   // v5.1.4 — `setAlwaysOnTop('screen-saver')` now applies on BOTH platforms.
   // Previously this entire block was Mac-only, leaving the popover on Windows
   // as a plain BrowserWindow with no z-order promotion — it opened behind
-  // fullscreen apps and lost focus instantly. `setVisibleOnAllWorkspaces`
-  // stays Mac-only (it's a no-op on Windows; explicit gate reads cleaner).
+  // fullscreen apps and lost focus instantly.
   win.setAlwaysOnTop(true, 'screen-saver');
-  if (isMac) {
-    win.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
-  }
+  // v5.3.4 — `setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true })`
+  // is intentionally NOT called here at creation. Per Electron issue #31538,
+  // `visibleOnFullScreen: true` hides the macOS Dock icon as a documented
+  // side effect of the `NSWindowCollectionBehaviorFullScreenAuxiliary` flag.
+  // togglePopover() applies this flag on every show and immediately
+  // restores `setActivationPolicy('regular')` to counter the side effect.
+  // Setting it at creation time would hide the Dock icon BEFORE any restore
+  // could run — leaving the app permanently dock-iconless.
 
   win.loadURL(url);
 
@@ -216,7 +220,9 @@ export function createAlertWindow(url: string, options: { width: number; height:
     },
   });
 
-  win.setVisibleOnAllWorkspaces(true);
+  // v5.3 — Only mac honours this; on Windows it's a no-op that emits a
+  // console warning, polluting our renderer/main logs.
+  if (isMac) win.setVisibleOnAllWorkspaces(true);
 
   // Center on screen (offset up slightly like the Swift version)
   const { screen } = require('electron');

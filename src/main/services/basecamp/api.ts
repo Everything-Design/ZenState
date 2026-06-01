@@ -3,6 +3,7 @@ import {
   BasecampProject,
   BasecampTodoList,
   BasecampTodo,
+  BasecampSubtask,
   BasecampTimesheetEntry,
   MyAssignment,
   MyAssignmentsResponse,
@@ -19,7 +20,7 @@ interface RawProject {
   id: number;
   name: string;
   description?: string;
-  dock?: Array<{ id: number; name: string; enabled: boolean; url: string }>;
+  dock?: Array<{ id: number; name: string; title?: string; enabled: boolean; url: string }>;
   timesheet_enabled?: boolean;
 }
 
@@ -54,6 +55,11 @@ interface RawTodo {
   due_on?: string;
   parent?: { id: number } | null;
   comments_count: number;
+  // v5.3 — Subtasks hint. `subtasks_count` lets the UI show a "▸ N subtasks"
+  // affordance without a fetch; `subtasks_url` is the canonical URL when BC
+  // exposes one. Not all BC accounts return these — we degrade if missing.
+  subtasks_count?: number;
+  subtasks_url?: string;
   url: string;
   app_url: string;
   assignees: Array<{ id: number }>;
@@ -217,12 +223,20 @@ export class BasecampApi {
   async listProjects(): Promise<BasecampProject[]> {
     const raw = await this.paginate<RawProject>(`${this.accountBase()}/projects.json`);
     return raw.map((p) => {
-      const todoset = p.dock?.find((d) => d.name === 'todoset' && d.enabled);
+      // v5.3.1 — Collect ALL todoset dock entries. A project can have several
+      // when the user has added extra "tools" (cloned Todo lists) — each is a
+      // separate dock entry with `name: 'todoset'` and a user-set title. The
+      // bc3-api Tools endpoint (POST /buckets/{id}/dock/tools.json) documents
+      // this as expected behaviour.
+      const todoSets = (p.dock ?? [])
+        .filter((d) => d.name === 'todoset' && d.enabled)
+        .map((d) => ({ id: d.id, title: d.title ?? 'To-dos' }));
       return {
         id: p.id,
         name: p.name,
         description: p.description,
-        todoSetId: todoset?.id,
+        todoSets,
+        todoSetId: todoSets[0]?.id, // back-compat
         timesheetEnabled: p.timesheet_enabled === true,
       };
     });
@@ -240,9 +254,52 @@ export class BasecampApi {
     }));
   }
 
+  // v5.3 — Returns ALL todos in a list, including those nested inside groups.
+  //
+  // Basecamp's /todolists/{listId}/todos.json endpoint returns ONLY the
+  // ungrouped todos at the list root. If a project organises its todos into
+  // groups (sections within a list, common pattern), the parent endpoint
+  // returns an empty array and the user sees nothing in the picker —
+  // confusingly, since they SEE the todos in Basecamp's web UI.
+  //
+  // Each group is itself a todolist (with its own id + todos_url) accessed
+  // via the parent list's groups.json sub-resource. We fetch the parent's
+  // direct todos AND every group's todos in parallel, then flatten.
   async listTodos(projectId: number, todoListId: number): Promise<BasecampTodo[]> {
-    const todos = await this.paginate<RawTodo>(`${this.accountBase()}/buckets/${projectId}/todolists/${todoListId}/todos.json`);
-    return todos.map(this.mapTodo);
+    const baseList = `${this.accountBase()}/buckets/${projectId}/todolists/${todoListId}`;
+
+    // Fetch direct todos + groups in parallel. Groups are best-effort: a
+    // 404 (or no groups feature on the account) just means there are none.
+    const [directTodos, groups] = await Promise.all([
+      this.paginate<RawTodo>(`${baseList}/todos.json`),
+      this.paginate<RawTodoList>(`${baseList}/groups.json`).catch(() => [] as RawTodoList[]),
+    ]);
+
+    // Fan out per-group todo fetches in parallel. Each group is structured
+    // as its own todolist — its todos live at its own todos_url.
+    const groupTodos = await Promise.all(
+      groups.map((g) =>
+        this.paginate<RawTodo>(g.todos_url).catch(() => [] as RawTodo[]),
+      ),
+    );
+
+    const all: RawTodo[] = [...directTodos, ...groupTodos.flat()];
+    return all.map(this.mapTodo);
+  }
+
+  // v5.3.1 — Subtasks are NOT exposed by Basecamp's public API. The bc3-api
+  // documentation (which is also the BC4 + BC5 API source of truth) has zero
+  // mention of "subtask" across all 41 section files. The `parent` field on a
+  // Todo always refers to its containing TodoList, never another Todo. The
+  // subtask feature visible in Basecamp's web UI (and now in BC5) is rendered
+  // server-side and not surfaced through any documented endpoint.
+  //
+  // We keep this method as a stable hook for when Basecamp eventually ships
+  // subtask API support — the IPC, preload bridge, types, and PinnedTodo
+  // `subtaskCompletions` field are all wired and waiting. Currently returns
+  // empty list so the renderer degrades silently.
+  async getSubtasksForTodo(_projectId: number, _parentTodoId: number): Promise<BasecampSubtask[]> {
+    return [];
   }
 
   async createTodo(input: {
@@ -403,7 +460,7 @@ export class BasecampApi {
   async getQuestionnaireForProject(projectId: number): Promise<BasecampQuestionnaire | null> {
     interface RawProjectWithDock {
       id: number;
-      dock?: Array<{ id: number; name: string; enabled: boolean; url: string }>;
+      dock?: Array<{ id: number; name: string; title?: string; enabled: boolean; url: string }>;
     }
     const proj = await this.requestJson<RawProjectWithDock>(`${this.accountBase()}/projects/${projectId}.json`);
     const questionnaireDock = proj.dock?.find((d) => d.name === 'questionnaire' && d.enabled);
@@ -508,6 +565,7 @@ export class BasecampApi {
       dueOn: t.due_on,
       parentId: t.parent?.id,
       commentsCount: t.comments_count,
+      subtasksCount: t.subtasks_count,
       url: t.url,
       appUrl: t.app_url,
     };

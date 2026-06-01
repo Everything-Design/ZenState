@@ -171,7 +171,16 @@ export interface BasecampProject {
   id: number;
   name: string;
   description?: string;
-  todoSetId?: number; // dock entry id for "todoset"
+  // v5.3.1 — A project can have MULTIPLE todoset-style dock entries when the
+  // user enables extra "tools" (clones of the default Todos tool). Each shows
+  // up in Basecamp as a separate column with its own title (e.g. "To-dos" +
+  // "Website To-Do"). All are exposed in the project's dock as dock entries
+  // with `name === 'todoset'`. Previously we only kept the first one's id,
+  // hiding any extras from the picker.
+  todoSets?: { id: number; title: string }[];
+  // Back-compat: first todoset id for surfaces that only need one. Equals
+  // `todoSets?.[0]?.id`. Renderer code that still reads this keeps working.
+  todoSetId?: number;
   timesheetEnabled?: boolean;
 }
 
@@ -195,6 +204,21 @@ export interface PinnedTodo {
   // explicitly chose persist-not-clear semantics — they treat notes as
   // ongoing scratch context tied to the task, not to a single session).
   draftNotes?: string;
+  // v5.3 — Local check state per subtask. Subtasks are fetched live from
+  // Basecamp; this map only tracks "I marked this subtask done on my side
+  // today." Time tracking still goes to the parent todo. Reset at midnight
+  // rollover along with completedAt. Keyed by subtask id → ISO timestamp.
+  subtaskCompletions?: Record<number, string>;
+}
+
+// v5.3 — Lightweight subtask shape. We only need id + content + completed
+// for display under the parent in the Today tab and pin picker. Time entries
+// always post to the PARENT, never to a subtask.
+export interface BasecampSubtask {
+  id: number;
+  content: string;
+  completed: boolean;
+  appUrl: string;
 }
 
 export interface TodayPlan {
@@ -244,6 +268,10 @@ export interface BasecampTodo {
   dueOn?: string;
   parentId?: number;
   commentsCount: number;
+  // v5.3 — Subtasks count hint from Basecamp. Drives the "▸ N subtasks"
+  // expand affordance in the pin picker without forcing a fetch on every
+  // row. The actual subtasks are loaded lazily via BC_GET_SUBTASKS.
+  subtasksCount?: number;
   url: string;
   appUrl: string;
 }
@@ -522,6 +550,10 @@ export const IPC = {
   // v5.2 — My notifications ("Hey!" replacement).
   BC_GET_NOTIFICATIONS: 'basecamp:get-notifications',
   BC_MARK_NOTIFICATION_READ: 'basecamp:mark-notification-read',
+  // v5.3 — Subtasks of a parent todo. Used by the pin picker (browse +
+  // search expand affordance) and by the Today tab to show subtasks as a
+  // checklist under each pinned row. Time tracking stays at the parent.
+  BC_GET_SUBTASKS: 'basecamp:get-subtasks',
   // v5.2 — Main → renderer event when the 9am check-in scheduler decides
   // it's time to prompt the user. Renderer opens CheckInModal in response.
   CHECKIN_PROMPT: 'checkin:prompt',
@@ -535,6 +567,9 @@ export const IPC = {
   TODAY_REORDER: 'today:reorder',
   TODAY_SET_ESTIMATE: 'today:set-estimate',
   TODAY_TOGGLE_COMPLETE: 'today:toggle-complete',
+  // v5.3 — Toggle the local check state for a subtask under a pinned todo.
+  // Purely local — Basecamp is not touched. Resets at midnight rollover.
+  TODAY_TOGGLE_SUBTASK: 'today:toggle-subtask',
   TODAY_CHANGED: 'today:changed', // main → renderer
   RECENTS_GET: 'recents:get',
 

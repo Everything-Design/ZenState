@@ -20,6 +20,26 @@ export interface ReleaseHighlight {
 
 export const RELEASE_HIGHLIGHTS: ReleaseHighlight[] = [
   {
+    version: '5.3.4',
+    title: "What's new in v5.3.4",
+    intro: 'Search, multi-list, completed-to-bottom, and a stack of lifecycle fixes.',
+    bullets: [
+      "Search bar on Today's plan and inside the pill — type to filter when you've got a lot pinned.",
+      "Projects with multiple to-do lists now surface ALL of them. Previously some lists were invisible.",
+      "Completed tasks drop to the bottom of Today's list instead of staying in place.",
+      "The pill now shows the project name above Notes when expanded — no more confusion when projects share task names.",
+      "Windows: closing the dashboard now minimizes to the taskbar instead of vanishing. Click the taskbar button to restore.",
+      "macOS: the Dock icon now stays visible reliably, and clicking it reopens the dashboard like a normal Mac app.",
+      "Search input auto-focuses when you expand the pill. Press Escape on the dashboard search to clear instantly.",
+      "Background polish: cleaner quit on Windows, no popover stragglers after sign-out, fewer log warnings.",
+    ],
+    footer: 'Got feedback?',
+    footerLink: {
+      label: 'Drop it in Basecamp',
+      url: 'https://3.basecamp.com/5826042/buckets/38489884/cloud_files/9572235152',
+    },
+  },
+  {
     version: '5.1.4',
     title: "What's new in v5.1.4",
     intro: 'A grab-bag of reliability fixes plus three features you asked for.',

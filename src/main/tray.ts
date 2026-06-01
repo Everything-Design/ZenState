@@ -117,7 +117,10 @@ export function createTray(callbacks: TrayCallbacks) {
       click: () => onOpenDashboardCallback?.(),
     },
     { type: 'separator' },
-    { label: 'Quit ZenState', role: 'quit' },
+    // v5.3 — Explicit click instead of `role: 'quit'`. `role` bypasses our
+    // `before-quit` `setClosable(true)` hotfix in some Windows builds; an
+    // explicit `app.quit()` always routes through it.
+    { label: 'Quit ZenState', click: () => app.quit() },
   ]);
 
   tray.on('right-click', () => {

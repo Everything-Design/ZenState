@@ -87,6 +87,7 @@ const IPC = {
   BC_POST_QUESTION_ANSWER: 'basecamp:post-question-answer',
   BC_GET_NOTIFICATIONS: 'basecamp:get-notifications',
   BC_MARK_NOTIFICATION_READ: 'basecamp:mark-notification-read',
+  BC_GET_SUBTASKS: 'basecamp:get-subtasks',
   CHECKIN_PROMPT: 'checkin:prompt',
   BC_AUTH_CHANGED: 'basecamp:auth-changed',
   TODAY_GET: 'today:get',
@@ -96,6 +97,7 @@ const IPC = {
   TODAY_REORDER: 'today:reorder',
   TODAY_SET_ESTIMATE: 'today:set-estimate',
   TODAY_TOGGLE_COMPLETE: 'today:toggle-complete',
+  TODAY_TOGGLE_SUBTASK: 'today:toggle-subtask',
   TODAY_CHANGED: 'today:changed',
   RECENTS_GET: 'recents:get',
   TOMORROW_GET: 'tomorrow:get',
@@ -201,6 +203,8 @@ contextBridge.exposeInMainWorld('zenstate', {
   bcPostQuestionAnswer: (projectId: number, questionId: number, content: string) => ipcRenderer.invoke(IPC.BC_POST_QUESTION_ANSWER, { projectId, questionId, content }),
   bcGetNotifications: () => ipcRenderer.invoke(IPC.BC_GET_NOTIFICATIONS),
   bcMarkNotificationRead: (notificationId: number) => ipcRenderer.invoke(IPC.BC_MARK_NOTIFICATION_READ, { notificationId }),
+  // v5.3 — Subtasks of a parent todo (display-only; time tracks to parent).
+  bcGetSubtasks: (projectId: number, parentTodoId: number) => ipcRenderer.invoke(IPC.BC_GET_SUBTASKS, { projectId, parentTodoId }),
 
   // Today + Recents
   todayGet: () => ipcRenderer.invoke(IPC.TODAY_GET),
@@ -210,6 +214,8 @@ contextBridge.exposeInMainWorld('zenstate', {
   todayReorder: (todoIds: number[]) => ipcRenderer.invoke(IPC.TODAY_REORDER, todoIds),
   todaySetEstimate: (todoId: number, minutes: number | null) => ipcRenderer.invoke(IPC.TODAY_SET_ESTIMATE, { todoId, minutes }),
   todayToggleComplete: (todoId: number) => ipcRenderer.invoke(IPC.TODAY_TOGGLE_COMPLETE, todoId),
+  // v5.3 — Toggle the local check state for a subtask under a pinned todo.
+  todayToggleSubtask: (parentTodoId: number, subtaskId: number) => ipcRenderer.invoke(IPC.TODAY_TOGGLE_SUBTASK, { parentTodoId, subtaskId }),
   tomorrowGet: () => ipcRenderer.invoke(IPC.TOMORROW_GET),
   tomorrowPin: (item: unknown) => ipcRenderer.invoke(IPC.TOMORROW_PIN, item),
   tomorrowPinMany: (items: unknown[]) => ipcRenderer.invoke(IPC.TOMORROW_PIN_MANY, items),

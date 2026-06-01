@@ -78,6 +78,13 @@ export default function TodayTab({ timerState, records, onOpenSettings, onRefres
     );
   }, [plan.items, todoSearchText]);
 
+  // v5.3 — Completed tasks sort to bottom; relative order preserved within each bucket.
+  const sortedItems = useMemo(() => {
+    const incomplete = filteredItems.filter((i) => !i.completedAt);
+    const complete = filteredItems.filter((i) => !!i.completedAt);
+    return [...incomplete, ...complete];
+  }, [filteredItems]);
+
   // Initial load + reactive updates from the main process. Subscribe FIRST,
   // then fetch — otherwise an event arriving between the request and its
   // async response can be clobbered by the (stale-by-then) response.
@@ -244,8 +251,15 @@ export default function TodayTab({ timerState, records, onOpenSettings, onRefres
                 <Search size={14} style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', color: 'var(--zen-tertiary-text)' }} />
                 <input
                   placeholder="Filter today's tasks..."
+                  aria-label="Filter today's tasks"
                   value={todoSearchText}
                   onChange={(e) => setTodoSearchText(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Escape') {
+                      setTodoSearchText('');
+                      e.currentTarget.blur();
+                    }
+                  }}
                   style={{
                     width: '100%',
                     padding: '9px 12px 9px 34px',
@@ -270,6 +284,7 @@ export default function TodayTab({ timerState, records, onOpenSettings, onRefres
                 {todoSearchText && (
                   <button
                     onClick={() => setTodoSearchText('')}
+                    aria-label="Clear search"
                     style={{
                       position: 'absolute',
                       right: 12,
@@ -289,12 +304,12 @@ export default function TodayTab({ timerState, records, onOpenSettings, onRefres
               </div>
             )}
 
-            {filteredItems.length === 0 ? (
+            {sortedItems.length === 0 ? (
               <div style={{ textAlign: 'center', padding: 'var(--space-6) 0', color: 'var(--zen-tertiary-text)', fontSize: 'var(--text-sm)', border: '1px dashed var(--zen-divider)', borderRadius: 'var(--radius-md)' }}>
                 No tasks match "{todoSearchText}"
               </div>
             ) : (
-              filteredItems.map((item) => (
+              sortedItems.map((item) => (
                 <PinnedRow
                   key={item.todoId}
                   item={item}
@@ -1445,7 +1460,7 @@ interface BrowseTabProps {
 function BrowseTab({ alreadyPinned, accountId, pending, onRowClick }: BrowseTabProps) {
   const [step, setStep] = useState<BrowseStep>('projects');
   const [projects, setProjects] = useState<BasecampProject[]>([]);
-  const [lists, setLists] = useState<BasecampTodoList[]>([]);
+  const [lists, setLists] = useState<Array<BasecampTodoList & { _todoSetTitle?: string }>>([]);
   const [todos, setTodos] = useState<BasecampTodo[]>([]);
   const [project, setProject] = useState<BasecampProject | null>(null);
   const [list, setList] = useState<BasecampTodoList | null>(null);
@@ -1474,13 +1489,32 @@ function BrowseTab({ alreadyPinned, accountId, pending, onRowClick }: BrowseTabP
 
   useEffect(() => { setSearch(''); }, [step]);
 
-  const goToLists = (p: BasecampProject) => {
+  const goToLists = async (p: BasecampProject) => {
     setProject(p); setStep('lists'); setLists([]); setLoading(true); setError(null);
-    if (!p.todoSetId) { setError('Project has no to-do set'); setLoading(false); return; }
-    zs.bcListTodoLists(p.id, p.todoSetId)
-      .then((res) => { if (res.ok) setLists(res.data); else setError(res.error); })
-      .catch((e: Error) => setError(e.message))
-      .finally(() => setLoading(false));
+    // v5.3.1 — A project can have MULTIPLE todoset dock entries (extra
+    // "tools" cloned from the default). Fetch lists from each in parallel
+    // and merge. Each list is tagged with its source todoset's title so the
+    // UI can group them under a caption when >1 todoset exists.
+    const sets = p.todoSets && p.todoSets.length > 0
+      ? p.todoSets
+      : (p.todoSetId ? [{ id: p.todoSetId, title: 'To-dos' }] : []);
+    if (sets.length === 0) {
+      setError('Project has no to-do set');
+      setLoading(false);
+      return;
+    }
+    try {
+      const batches = await Promise.all(sets.map((s) =>
+        zs.bcListTodoLists(p.id, s.id).then((res) =>
+          res.ok ? res.data.map((l) => ({ ...l, _todoSetTitle: s.title })) : []
+        ).catch(() => [] as Array<BasecampTodoList & { _todoSetTitle?: string }>)
+      ));
+      setLists(batches.flat());
+    } catch (e) {
+      setError((e as Error).message);
+    } finally {
+      setLoading(false);
+    }
   };
 
   const goToTodos = (l: BasecampTodoList) => {
@@ -1564,9 +1598,35 @@ function BrowseTab({ alreadyPinned, accountId, pending, onRowClick }: BrowseTabP
       {!loading && !error && step === 'lists' && (
         filteredLists.length === 0
           ? <TabEmpty label="No lists match." />
-          : filteredLists.map((l) => (
-            <BrowseRow key={l.id} title={l.title} subtitle={l.description} onClick={() => goToTodos(l)} />
-          ))
+          : (() => {
+              // v5.3.1 — When a project has multiple todoset tools (e.g.
+              // "To-dos" + "Website To-Do"), group lists under their parent
+              // todoset's title so the user can see which "side" each list
+              // belongs to. If only one todoset, render flat without headers.
+              const hasMultipleSets = project?.todoSets && project.todoSets.length > 1;
+              if (!hasMultipleSets) {
+                return filteredLists.map((l) => (
+                  <BrowseRow key={l.id} title={l.title} subtitle={l.description} onClick={() => goToTodos(l)} />
+                ));
+              }
+              const groups = new Map<string, typeof filteredLists>();
+              for (const l of filteredLists) {
+                const key = l._todoSetTitle ?? 'To-dos';
+                const arr = groups.get(key) ?? [];
+                arr.push(l);
+                groups.set(key, arr);
+              }
+              return Array.from(groups.entries()).map(([title, group]) => (
+                <React.Fragment key={`set-${title}`}>
+                  <div style={{ fontSize: 'var(--text-xs)', color: 'var(--zen-tertiary-text)', textTransform: 'uppercase', letterSpacing: 0.5, padding: '6px 4px 2px' }}>
+                    {title}
+                  </div>
+                  {group.map((l) => (
+                    <BrowseRow key={l.id} title={l.title} subtitle={l.description} onClick={() => goToTodos(l)} />
+                  ))}
+                </React.Fragment>
+              ));
+            })()
       )}
 
       {!loading && !error && step === 'todos' && (
@@ -1578,7 +1638,9 @@ function BrowseTab({ alreadyPinned, accountId, pending, onRowClick }: BrowseTabP
               : null;
             return (
               <SelectableRow
-                key={t.id} todoId={t.id} title={t.content}
+                key={t.id}
+                todoId={t.id}
+                title={t.content}
                 subtitle={`${project?.name ?? ''}${list ? ` · ${list.title}` : ''}`}
                 checked={pending.has(t.id)} disabled={!item}
                 onClick={() => item && onRowClick(item)}

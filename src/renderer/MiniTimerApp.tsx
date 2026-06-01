@@ -7,10 +7,11 @@ interface TimerState {
   isRunning: boolean;
   isPaused: boolean;
   taskLabel: string;
+  basecampTodoId?: number;
 }
 
 const COMPACT_W = 240;
-const COMPACT_H = 36;
+const COMPACT_H = 36; // v5.3.1 — reverted from 44; project name moved to expanded panel
 const EXPANDED_W = 300;
 // Height calculated dynamically: header (52) + items (each 50) + padding (12).
 
@@ -165,19 +166,29 @@ export default function MiniTimerApp() {
     const next = !expanded;
     setExpanded(next);
     if (next) {
-      // Compute dynamic height: pill (36) + notes section (~110) + a row per
-      // switchable item (≈50) + a bit of slack for headings/padding. Capped so
-      // the pill never balloons past a reasonable size on small screens.
-      const itemCount = plan?.items.length ?? 0;
-      // Item rows + the bottom "+ Pin another to-do" button (~32px) + search bar (~34px)
-      const switcherHeight = (itemCount > 0 ? 24 + 50 * itemCount + 16 + 34 : 56) + 32;
-      const height = Math.min(540, 36 + NOTES_SECTION_H + switcherHeight);
+      // Compute dynamic height based on switchable items (excludes running task
+      // and completed items — matches what's actually rendered in the switcher).
+      const switchableCount = (plan?.items ?? []).filter(
+        (p) => p.content !== timer.taskLabel && !p.completedAt
+      ).length;
+      // v5.3.1 — Project banner is ~24px when shown, 0 when no match. Match
+      // by todoId first (more reliable), fall back to content.
+      const hasProjectBanner = (plan?.items ?? []).some((p) =>
+        timer.basecampTodoId != null ? p.todoId === timer.basecampTodoId : p.content === timer.taskLabel
+      );
+      const projectBannerH = hasProjectBanner ? 24 : 0;
+      // Item rows + "Today" heading (~24px) + bottom button (~32px).
+      // Search bar (~34px) is only rendered when switchableCount > 0.
+      const switcherHeight = switchableCount > 0
+        ? 24 + 50 * switchableCount + 16 + 34 + 32
+        : 56 + 32;
+      const height = Math.min(540, COMPACT_H + projectBannerH + NOTES_SECTION_H + switcherHeight);
       window.zenstate.miniTimerResize({ width: EXPANDED_W, height });
     } else {
       setTaskSearchText('');
       window.zenstate.miniTimerResize({ width: COMPACT_W, height: COMPACT_H });
     }
-  }, [expanded, plan, setTaskSearchText]);
+  }, [expanded, plan, timer.taskLabel, setTaskSearchText]);
 
   // Collapse if nothing is running anymore (avoid orphaned expanded state).
   useEffect(() => {
@@ -186,6 +197,9 @@ export default function MiniTimerApp() {
       window.zenstate.miniTimerResize({ width: COMPACT_W, height: COMPACT_H });
     }
   }, [timer.isRunning, expanded]);
+
+  // ── Search input ref for auto-focus on expand ─────────────────
+  const searchInputRef = useRef<HTMLInputElement>(null);
 
   // ── Drag + click on the pill body ────────────────────────────
   // We can't use macOS' -webkit-app-region: drag here because that swallows
@@ -266,9 +280,28 @@ export default function MiniTimerApp() {
 
   // Filter out the currently-running task and any completed items — the pill
   // is for the in-the-moment switch, so completed work is just noise here.
-  // Users can still see their full list (including done items) on the
-  // dashboard Plan tab and in the popover.
-  const switchablePinned = (plan?.items ?? []).filter((p) => p.content !== timer.taskLabel && !p.completedAt);
+  // Memoized to avoid a new array on every 1-second timer tick.
+  const switchablePinned = React.useMemo(() =>
+    (plan?.items ?? []).filter((p) => p.content !== timer.taskLabel && !p.completedAt),
+    [plan?.items, timer.taskLabel]
+  );
+
+  // Project name for the compact pill — match by todoId first (reliable),
+  // fall back to content match. Undefined if no plan match (manual timer).
+  const activeProjectName = React.useMemo(() => {
+    if (!plan?.items) return undefined;
+    const match = timer.basecampTodoId != null
+      ? plan.items.find((p) => p.todoId === timer.basecampTodoId)
+      : plan.items.find((p) => p.content === timer.taskLabel);
+    return match?.projectName;
+  }, [plan?.items, timer.basecampTodoId, timer.taskLabel]);
+
+  // Auto-focus the search input when the panel expands and there are tasks.
+  useEffect(() => {
+    if (expanded && switchablePinned.length > 0) {
+      searchInputRef.current?.focus();
+    }
+  }, [expanded]);
 
   const filteredSwitchablePinned = React.useMemo(() => {
     if (!taskSearchText.trim()) return switchablePinned;
@@ -330,7 +363,11 @@ export default function MiniTimerApp() {
           {formatHMS(timer.elapsed)}
         </span>
 
-        <span style={{ flex: 1, opacity: 0.78, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+        {/* v5.3.1 — Reverted to single-line task label to keep the pill slim
+            (36px). Project name now lives in the expanded panel above Notes
+            so it's visible when needed without crowding the always-visible
+            pill. */}
+        <span style={{ flex: 1, minWidth: 0, opacity: 0.85, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
           {truncated}
         </span>
 
@@ -365,6 +402,22 @@ export default function MiniTimerApp() {
       {/* Expanded panel — notes + task switcher */}
       {expanded && (
         <div style={{ flex: 1, overflowY: 'auto', borderTop: '1px solid rgba(255,255,255,0.06)' }}>
+          {/* v5.3.1 — Project name banner above Notes. Gives task-name context
+              without crowding the always-visible compact pill. Hidden when no
+              matching pinned todo (e.g. manual non-Basecamp timer). */}
+          {activeProjectName && (
+            <div style={{
+              padding: '6px 12px 4px',
+              fontSize: 10,
+              color: 'rgba(230,237,243,0.55)',
+              borderBottom: '1px solid rgba(255,255,255,0.04)',
+              display: 'flex', alignItems: 'center', gap: 6,
+              overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+            }}>
+              <Briefcase size={10} style={{ opacity: 0.55, flexShrink: 0 }} />
+              <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>{activeProjectName}</span>
+            </div>
+          )}
           {/* Notes — captured throughout the session, pre-fills the timesheet
               confirm popup at stop, and saves to the local session record.
               Debounced save means a few keystrokes don't flood IPC. */}
@@ -443,6 +496,8 @@ export default function MiniTimerApp() {
               <div style={{ padding: '4px 12px 6px', position: 'relative' }}>
                 <Search size={10} style={{ position: 'absolute', left: 20, top: '50%', transform: 'translateY(-50%)', opacity: 0.4 }} />
                 <input
+                  ref={searchInputRef}
+                  aria-label="Search pinned tasks"
                   placeholder="Search pinned tasks..."
                   value={taskSearchText}
                   onChange={(e) => setTaskSearchText(e.target.value)}
@@ -469,6 +524,7 @@ export default function MiniTimerApp() {
                 />
                 {taskSearchText && (
                   <button
+                    aria-label="Clear search"
                     onClick={() => setTaskSearchText('')}
                     style={{
                       position: 'absolute',
