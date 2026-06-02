@@ -335,7 +335,20 @@ function startCheckInScheduler() {
 }
 
 app.on('window-all-closed', () => {
-  // Don't quit — menu bar app. Do nothing.
+  // Menu-bar app: when the user manually closes the dashboard (red X / Cmd+W),
+  // we want the app to keep running in the tray. The mere act of subscribing
+  // to this event overrides Electron's default auto-quit-on-last-window-close
+  // behaviour (per the docs), which is what we want for that case.
+  //
+  // BUT — when the app HAS been explicitly asked to quit (Cmd+Q, tray "Quit",
+  // or autoUpdater.quitAndInstall()), `before-quit` set `isQuitting=true`
+  // before this event fired. In that case we need to let the quit complete;
+  // otherwise the process stays alive, Squirrel.Mac's ShipIt installer waits
+  // forever for the parent to exit, and the update never applies. This was
+  // the v5.3.5 "Restart for update doesn't restart" bug.
+  if (isQuitting) {
+    app.exit(0);
+  }
 });
 
 // v5.1.2 — Renderer / child-process crash recovery. The intermittent
