@@ -253,7 +253,7 @@ contextBridge.exposeInMainWorld('zenstate', {
   setStatusRevert: (seconds: number) => ipcRenderer.send(IPC.SET_STATUS_REVERT, { seconds }),
   cancelStatusRevert: () => ipcRenderer.send(IPC.CANCEL_STATUS_REVERT),
   timerLongRunRespond: (payload: { action: 'continue' | 'stop' | 'backdate'; stopAtIso?: string }) => ipcRenderer.send(IPC.TIMER_LONG_RUN_RESPONSE, payload),
-  timerIdleRespond: (payload: { action: 'continue' | 'pause' | 'backdate'; stopAtIso?: string; enableMeetingMode?: boolean }) => ipcRenderer.send(IPC.TIMER_IDLE_RESPONSE, payload),
+  timerIdleRespond: (payload: { action: 'continue' | 'pause' | 'stop' | 'backdate'; stopAtIso?: string; enableMeetingMode?: boolean }) => ipcRenderer.send(IPC.TIMER_IDLE_RESPONSE, payload),
   timerSetMeetingMode: (on: boolean) => ipcRenderer.send(IPC.TIMER_SET_MEETING_MODE, on),
   timerTimesheetConfirm: (payload: { action: 'post' | 'discard'; hours?: string; notes?: string; durationSec?: number; additionalPersonIds?: number[] }) => ipcRenderer.send(IPC.TIMER_TIMESHEET_CONFIRM, payload),
   miniTimerResize: (size: { width: number; height: number }) => ipcRenderer.send(IPC.MINI_TIMER_RESIZE, size),

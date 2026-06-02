@@ -12,7 +12,7 @@ interface Props {
   onRespond: (accepted: boolean, message?: string) => void;
   onDismiss: () => void;
   onLongRunResponse?: (action: 'continue' | 'stop' | 'backdate', stopAtIso?: string) => void;
-  onIdleResponse?: (action: 'continue' | 'pause' | 'backdate', stopAtIso?: string, enableMeetingMode?: boolean) => void;
+  onIdleResponse?: (action: 'continue' | 'pause' | 'stop' | 'backdate', stopAtIso?: string, enableMeetingMode?: boolean) => void;
   onTimesheetConfirm?: (action: 'post' | 'discard', hours?: string, notes?: string, durationSec?: number, additionalPersonIds?: number[]) => void;
   // v5.2 — project id passed through so TimesheetConfirmPanel can fetch members.
   timesheetProjectId?: number;
@@ -164,14 +164,28 @@ export default function AlertView({ type, from, senderId, message, accepted, tar
           >
             Still working — keep running
           </button>
+          {/* v5.3.5 — "Stop now" was missing from the idle prompt (only the
+              long-run guard had it). The previous "Walked away" button was
+              the only way to stop, and its backdate-to-last-activity math
+              gave 0 when the user started the timer and walked away soon
+              after (lastActivity ≈ startTime → recorded as 0). Stop now
+              records the current pill elapsed time directly. */}
+          <button
+            className="btn btn-secondary"
+            style={{ width: '100%' }}
+            onClick={() => { onIdleResponse?.('stop'); onDismiss(); }}
+            title="Stop the timer and log the time shown on the pill."
+          >
+            Stop now
+          </button>
           {showBackdate && lastActivityAt && (
             <button
               className="btn btn-secondary"
               style={{ width: '100%' }}
               onClick={() => { onIdleResponse?.('backdate', lastActivityAt); onDismiss(); }}
-              title="Stop the timer and back-date the end to your last keyboard or mouse activity."
+              title="Stop the timer and back-date the end to your last keyboard or mouse activity (discards the idle time)."
             >
-              Walked away at {lastActivityLabel} — stop there
+              Walked away at {lastActivityLabel} — discard idle time
             </button>
           )}
           <button

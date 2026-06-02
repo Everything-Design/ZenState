@@ -1493,9 +1493,9 @@ function setupIPC() {
   });
 
   // Idle prompt response — user chooses to keep working (optionally with
-  // Meeting mode on), pause now, or backdate the stop to their last
-  // keyboard activity. Mirrors the long-run guard pattern.
-  ipcMain.on(IPC.TIMER_IDLE_RESPONSE, (_e, payload: { action: 'continue' | 'pause' | 'backdate'; stopAtIso?: string; enableMeetingMode?: boolean }) => {
+  // Meeting mode on), stop and log the pill time as-is, pause now, or
+  // backdate the stop to their last keyboard activity.
+  ipcMain.on(IPC.TIMER_IDLE_RESPONSE, (_e, payload: { action: 'continue' | 'pause' | 'stop' | 'backdate'; stopAtIso?: string; enableMeetingMode?: boolean }) => {
     idlePromptResponded = true;
     if (!timerIsRunning) return;
     if (payload.action === 'continue') {
@@ -1512,10 +1512,25 @@ function setupIPC() {
       broadcastToWindows(IPC.TIMER_AUTO_PAUSED, { reason: 'idle-confirmed' });
       return;
     }
+    if (payload.action === 'stop') {
+      // v5.3.5 — Plain Stop. The user wants to end the session and keep the
+      // elapsed time the pill is showing. stopTimer() already computes
+      // totalDuration = timerAccumulatedTime + (now - timerStartTime), which
+      // is exactly the pill value. No backdating, no math gymnastics.
+      stopTimer();
+      return;
+    }
     if (payload.action === 'backdate' && payload.stopAtIso) {
       const stopAt = new Date(payload.stopAtIso).getTime();
       const startWall = timerStartTime ? timerStartTime.getTime() - timerAccumulatedTime * 1000 : Date.now();
-      const correctedDuration = Math.max(0, (stopAt - startWall) / 1000);
+      // v5.3.5 — Preserve prior accumulated work even if lastActivity is
+      // earlier than startWall (which can happen when the user paused, took
+      // a break, then resumed without further input — the last "activity"
+      // timestamp is from before the pause). Without this floor, backdate
+      // could wipe 30min of pre-pause work to 0. We never let the corrected
+      // duration drop below timerAccumulatedTime.
+      const rawCorrected = Math.max(0, (stopAt - startWall) / 1000);
+      const correctedDuration = Math.max(rawCorrected, timerAccumulatedTime);
       timerAccumulatedTime = correctedDuration;
       timerStartTime = null;
       stopTimer();

@@ -46,7 +46,7 @@ declare global {
       setStatusRevert: (seconds: number) => void;
       cancelStatusRevert: () => void;
       timerLongRunRespond: (payload: { action: 'continue' | 'stop' | 'backdate'; stopAtIso?: string }) => void;
-      timerIdleRespond: (payload: { action: 'continue' | 'pause' | 'backdate'; stopAtIso?: string; enableMeetingMode?: boolean }) => void;
+      timerIdleRespond: (payload: { action: 'continue' | 'pause' | 'stop' | 'backdate'; stopAtIso?: string; enableMeetingMode?: boolean }) => void;
       timerSetMeetingMode: (on: boolean) => void;
       timerTimesheetConfirm: (payload: { action: 'post' | 'discard'; hours?: string; notes?: string; durationSec?: number; additionalPersonIds?: number[] }) => void;
       miniTimerResize: (size: { width: number; height: number }) => void;
