@@ -88,6 +88,7 @@ const IPC = {
   BC_GET_NOTIFICATIONS: 'basecamp:get-notifications',
   BC_MARK_NOTIFICATION_READ: 'basecamp:mark-notification-read',
   BC_GET_SUBTASKS: 'basecamp:get-subtasks',
+  BC_LIST_CARDS_FOR_TABLE: 'basecamp:list-cards-for-table',
   CHECKIN_PROMPT: 'checkin:prompt',
   BC_AUTH_CHANGED: 'basecamp:auth-changed',
   TODAY_GET: 'today:get',
@@ -205,6 +206,8 @@ contextBridge.exposeInMainWorld('zenstate', {
   bcMarkNotificationRead: (notificationId: number) => ipcRenderer.invoke(IPC.BC_MARK_NOTIFICATION_READ, { notificationId }),
   // v5.3 — Subtasks of a parent todo (display-only; time tracks to parent).
   bcGetSubtasks: (projectId: number, parentTodoId: number) => ipcRenderer.invoke(IPC.BC_GET_SUBTASKS, { projectId, parentTodoId }),
+  // v5.4.0 — Flat list of cards from a Card Table.
+  bcListCardsForTable: (projectId: number, cardTableId: number) => ipcRenderer.invoke(IPC.BC_LIST_CARDS_FOR_TABLE, { projectId, cardTableId }),
 
   // Today + Recents
   todayGet: () => ipcRenderer.invoke(IPC.TODAY_GET),

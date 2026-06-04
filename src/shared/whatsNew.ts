@@ -20,6 +20,22 @@ export interface ReleaseHighlight {
 
 export const RELEASE_HIGHLIGHTS: ReleaseHighlight[] = [
   {
+    version: '5.4.0',
+    title: "What's new in v5.4.0",
+    intro: 'Card Tables now show up in the picker — plus a stack of macOS lifecycle fixes from v5.3.5/.6.',
+    bullets: [
+      "Card Tables are pinnable. Browse a project that uses a Card Table → it appears as a list. Click it → all non-Done cards show up flat, ready to pin and track time on. Cards work identically to to-dos from there.",
+      "Search + My Todos tabs now surface cards too — full parity with todos.",
+      'Idle prompt has a proper "Stop now" button. Previously the only way to stop was "Walked away" which back-dated to last activity, sometimes recording 0 minutes. Stop now logs whatever the pill is showing.',
+      '"Restart to update" actually restarts now. Earlier the menu-bar-app quit handler was blocking every explicit quit, so updates would download but never install.',
+    ],
+    footer: 'Got feedback?',
+    footerLink: {
+      label: 'Drop it in Basecamp',
+      url: 'https://3.basecamp.com/5826042/buckets/38489884/cloud_files/9572235152',
+    },
+  },
+  {
     version: '5.3.4',
     title: "What's new in v5.3.4",
     intro: 'Search, multi-list, completed-to-bottom, and a stack of lifecycle fixes.',

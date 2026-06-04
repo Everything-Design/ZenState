@@ -181,6 +181,11 @@ export interface BasecampProject {
   // Back-compat: first todoset id for surfaces that only need one. Equals
   // `todoSets?.[0]?.id`. Renderer code that still reads this keeps working.
   todoSetId?: number;
+  // v5.4.0 — Card Tables enabled on the project (`dock` entries with
+  // `name === 'kanban_board'`). Each one becomes a virtual "list" in the
+  // picker; clicking it returns all non-Done cards flattened across columns
+  // (no Kanban UI — pure flat list).
+  cardTables?: { id: number; title: string }[];
   timesheetEnabled?: boolean;
 }
 
@@ -554,6 +559,11 @@ export const IPC = {
   // search expand affordance) and by the Today tab to show subtasks as a
   // checklist under each pinned row. Time tracking stays at the parent.
   BC_GET_SUBTASKS: 'basecamp:get-subtasks',
+  // v5.4.0 — Flatten all non-Done cards from a Card Table into a single list.
+  // Returns BasecampTodo-shaped items so the picker + Today tab can render
+  // them identically to todos. Time-tracking uses the same recording-id
+  // pipeline (cards ARE recordings, no separate timesheet code).
+  BC_LIST_CARDS_FOR_TABLE: 'basecamp:list-cards-for-table',
   // v5.2 — Main → renderer event when the 9am check-in scheduler decides
   // it's time to prompt the user. Renderer opens CheckInModal in response.
   CHECKIN_PROMPT: 'checkin:prompt',

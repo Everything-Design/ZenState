@@ -146,6 +146,35 @@ interface RawNotificationsResponse {
   memories?: RawNotification[];
 }
 
+// v5.4.0 — Card Table response shapes. Cards live in columns ("lists") inside
+// a card_table recording. We flatten across columns for the picker.
+interface RawCardTable {
+  id: number;
+  title: string;
+  lists?: RawCardColumn[];
+}
+
+interface RawCardColumn {
+  id: number;
+  title: string;
+  type: string;            // 'Kanban::Triage' | 'Kanban::NotNowColumn' | 'Kanban::Column' | 'Kanban::DoneColumn'
+  cards_count?: number;
+  cards_url?: string;
+}
+
+interface RawCard {
+  id: number;
+  title?: string;          // short label — what we display as content
+  content?: string;        // longer rich-text description
+  completed?: boolean;
+  due_on?: string;
+  url: string;
+  app_url: string;
+  assignees?: Array<{ id: number }>;
+  parent?: { id: number; title?: string; type?: string };
+  comments_count?: number;
+}
+
 const MAX_AUTH_RETRIES = 1;
 const MAX_RATE_LIMIT_RETRIES = 3;
 // Cap how long we'll honour a Retry-After header. Basecamp can return arbitrary
@@ -225,18 +254,24 @@ export class BasecampApi {
     return raw.map((p) => {
       // v5.3.1 — Collect ALL todoset dock entries. A project can have several
       // when the user has added extra "tools" (cloned Todo lists) — each is a
-      // separate dock entry with `name: 'todoset'` and a user-set title. The
-      // bc3-api Tools endpoint (POST /buckets/{id}/dock/tools.json) documents
-      // this as expected behaviour.
+      // separate dock entry with `name: 'todoset'` and a user-set title.
       const todoSets = (p.dock ?? [])
         .filter((d) => d.name === 'todoset' && d.enabled)
         .map((d) => ({ id: d.id, title: d.title ?? 'To-dos' }));
+      // v5.4.0 — Same pattern for Card Tables. A project can enable Kanban
+      // boards as additional tools; each shows up in the dock with
+      // `name: 'kanban_board'`. We surface them as virtual "lists" in the
+      // picker — the user picks a card table, sees all its cards flat.
+      const cardTables = (p.dock ?? [])
+        .filter((d) => d.name === 'kanban_board' && d.enabled)
+        .map((d) => ({ id: d.id, title: d.title ?? 'Card Table' }));
       return {
         id: p.id,
         name: p.name,
         description: p.description,
         todoSets,
         todoSetId: todoSets[0]?.id, // back-compat
+        cardTables,
         timesheetEnabled: p.timesheet_enabled === true,
       };
     });
@@ -300,6 +335,55 @@ export class BasecampApi {
   // empty list so the renderer degrades silently.
   async getSubtasksForTodo(_projectId: number, _parentTodoId: number): Promise<BasecampSubtask[]> {
     return [];
+  }
+
+  // v5.4.0 — Flatten all cards from a Card Table into a single BasecampTodo[]
+  // list. Skips the Done column entirely (parallels how we hide completed
+  // todos). Cards remain in their `completed: false` state in active columns
+  // (Triage / Not Now / Column) — those are still pickable.
+  //
+  // Flow:
+  //   1. GET /buckets/{p}/card_tables/{id}.json → returns the table with its
+  //      columns ("lists" in BC parlance) inline.
+  //   2. For each non-Done column, paginate its cards_url in parallel.
+  //   3. Filter out completed cards (belt-and-suspenders — Done column should
+  //      already cover this, but cards can be completed-in-place too).
+  //   4. Map each card to BasecampTodo so the picker + Today tab can render
+  //      it identically to a todo. Cards use `title` as their short label;
+  //      `content` is the longer description.
+  async listCardsForTable(projectId: number, cardTableId: number): Promise<BasecampTodo[]> {
+    const table = await this.requestJson<RawCardTable>(
+      `${this.accountBase()}/buckets/${projectId}/card_tables/${cardTableId}.json`,
+    );
+    const activeColumns = (table.lists ?? []).filter((c) => c.type !== 'Kanban::DoneColumn');
+    const columnFetches = await Promise.all(
+      activeColumns.map((col) =>
+        col.cards_url
+          ? this.paginate<RawCard>(col.cards_url).catch(() => [] as RawCard[])
+          : Promise.resolve([] as RawCard[]),
+      ),
+    );
+    const allCards = columnFetches.flat().filter((c) => !c.completed);
+    return allCards.map((c) => this.mapCard(c));
+  }
+
+  private mapCard(c: RawCard): BasecampTodo {
+    // Cards have BOTH `title` (short) and `content` (long rich text). The
+    // picker shows the row's `content` field as the visible label, so we map
+    // card.title → BasecampTodo.content. This matches what users see in
+    // Basecamp's Kanban UI (the card's bold title).
+    return {
+      id: c.id,
+      content: c.title ?? c.content ?? '',
+      description: c.content,
+      completed: c.completed === true,
+      assigneeIds: c.assignees?.map((a) => a.id) ?? [],
+      dueOn: c.due_on,
+      parentId: c.parent?.id,
+      commentsCount: c.comments_count ?? 0,
+      url: c.url,
+      appUrl: c.app_url,
+    };
   }
 
   async createTodo(input: {
@@ -391,19 +475,31 @@ export class BasecampApi {
     );
   }
 
+  // v5.4.0 — Recognised types for "things you can pin and track time on."
+  // BC normalises card-table assignments to lowercase `"todo"` in
+  // /my/assignments.json, while everywhere else uses CapitalCase model names
+  // (`Todo`, `Kanban::Card`). Accepting all three covers todos, lowercase
+  // normalised assignments (incl. cards from card tables), and explicit
+  // Kanban cards.
+  private isPinnableType(t: string): boolean {
+    return t === 'Todo' || t === 'todo' || t === 'Kanban::Card';
+  }
+
   // Fetch todos assigned to the authenticated user across all projects, grouped
   // into priorities and non-priorities. One request replaces the project → list
   // → todo drill-down for the common "pin one of my todos" case.
+  // v5.4.0 — Now also includes assigned Card Table cards (BC's
+  // /my/assignments normalises them under the same response).
   async getMyAssignments(): Promise<MyAssignmentsResponse> {
     const raw = await this.requestJson<RawMyAssignmentsResponse>(
       `${this.accountBase()}/my/assignments.json`,
     );
     return {
       priorities: (raw.priorities ?? [])
-        .filter((r) => r.type === 'Todo')
+        .filter((r) => this.isPinnableType(r.type))
         .map((r) => this.mapMyAssignment(r)),
       nonPriorities: (raw.non_priorities ?? [])
-        .filter((r) => r.type === 'Todo')
+        .filter((r) => this.isPinnableType(r.type))
         .map((r) => this.mapMyAssignment(r)),
     };
   }
@@ -414,14 +510,20 @@ export class BasecampApi {
   async getMyAssignmentsDue(scope: MyAssignmentsDueScope): Promise<MyAssignment[]> {
     const url = `${this.accountBase()}/my/assignments/due.json?scope=${encodeURIComponent(scope)}`;
     const raw = await this.paginate<RawMyAssignment>(url);
-    return raw.filter((r) => r.type === 'Todo').map((r) => this.mapMyAssignment(r));
+    return raw.filter((r) => this.isPinnableType(r.type)).map((r) => this.mapMyAssignment(r));
   }
 
-  // Full-text search across the authenticated user's account. We filter to
-  // Todo hits; results land in a flat list ordered by relevance.
+  // Full-text search across the authenticated user's account. v5.4.0 —
+  // searches Todos AND Kanban Cards in parallel and merges the results.
+  // Order: cards appended after todos (BC orders within each set by relevance).
   async searchTodos(query: string): Promise<TodoSearchResult[]> {
-    const url = `${this.accountBase()}/search.json?q=${encodeURIComponent(query)}&type=Todo`;
-    const hits = await this.paginate<RawSearchHit>(url);
+    const todoUrl = `${this.accountBase()}/search.json?q=${encodeURIComponent(query)}&type=Todo`;
+    const cardUrl = `${this.accountBase()}/search.json?q=${encodeURIComponent(query)}&type=Kanban::Card`;
+    const [todoHits, cardHits] = await Promise.all([
+      this.paginate<RawSearchHit>(todoUrl).catch(() => [] as RawSearchHit[]),
+      this.paginate<RawSearchHit>(cardUrl).catch(() => [] as RawSearchHit[]),
+    ]);
+    const hits = [...todoHits, ...cardHits];
     return hits.map((h) => ({
       id: h.id,
       type: h.type,

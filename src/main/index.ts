@@ -1724,6 +1724,21 @@ function setupIPC() {
         basecamp: link ? { ...link, synced: false } : undefined,
       });
 
+      // v5.4.0 — Broadcast IMMEDIATELY after the session is persisted, before
+      // the async Basecamp post fires. Previously the only refresh signal
+      // was `basecamp:timesheet-updated` which only fires AFTER the BC post
+      // resolves. That meant:
+      //   • sessions without a Basecamp link: NO refresh broadcast ever
+      //   • sessions with a link: refresh only after the network call
+      //     completes (200-500ms+), so the renderer's pinned-row tracked
+      //     time could stay stale until then.
+      // This deterministic event fires on every save and unblocks every
+      // listener (dashboard records, popover, pill) at the same moment.
+      broadcastToWindows('basecamp:timesheet-updated', {
+        projectId: link?.projectId,
+        todoId: link?.todoId,
+      });
+
       // Auto-post to Basecamp when the entry is linked + >= 1 minute. No
       // confirm popup — the user already typed the duration. If the post
       // fails, the session stays unsynced and Backfill picks it up.
@@ -2370,6 +2385,18 @@ function setupIPC() {
       return { ok: true, data: await basecamp.api.getSubtasksForTodo(data.projectId, data.parentTodoId) };
     } catch (err) {
       return { ok: false, error: describeError(err, 'getSubtasksForTodo') };
+    }
+  });
+
+  // v5.4.0 — Card Tables flattened into the picker. Returns all non-Done
+  // cards from a Card Table as BasecampTodo-shaped items, so the picker +
+  // Today tab can render them identically to todos. Time-tracking uses the
+  // same recording-id pipeline (cards ARE recordings, no new timesheet code).
+  ipcMain.handle(IPC.BC_LIST_CARDS_FOR_TABLE, async (_e, data: { projectId: number; cardTableId: number }) => {
+    try {
+      return { ok: true, data: await basecamp.api.listCardsForTable(data.projectId, data.cardTableId) };
+    } catch (err) {
+      return { ok: false, error: describeError(err, 'listCardsForTable') };
     }
   });
 

@@ -14,6 +14,7 @@ const zs = window.zenstate as unknown as {
   bcListProjects: () => Promise<{ ok: true; data: BasecampProject[] } | { ok: false; error: string }>;
   bcListTodoLists: (projectId: number, todoSetId: number) => Promise<{ ok: true; data: BasecampTodoList[] } | { ok: false; error: string }>;
   bcListTodos: (projectId: number, todoListId: number) => Promise<{ ok: true; data: BasecampTodo[] } | { ok: false; error: string }>;
+  bcListCardsForTable: (projectId: number, cardTableId: number) => Promise<{ ok: true; data: BasecampTodo[] } | { ok: false; error: string }>;
   bcCreateTodo: (data: { projectId: number; todoListId: number; content: string; dueOn?: string }) => Promise<{ ok: true; data: BasecampTodo } | { ok: false; error: string }>;
   bcPostComment: (data: { projectId: number; todoId: number; content: string }) => Promise<{ ok: true } | { ok: false; error: string }>;
   todayPinMany: (items: PinnedTodo[]) => Promise<{ plan: TodayPlan; added: number }>;
@@ -1460,7 +1461,7 @@ interface BrowseTabProps {
 function BrowseTab({ alreadyPinned, accountId, pending, onRowClick }: BrowseTabProps) {
   const [step, setStep] = useState<BrowseStep>('projects');
   const [projects, setProjects] = useState<BasecampProject[]>([]);
-  const [lists, setLists] = useState<Array<BasecampTodoList & { _todoSetTitle?: string }>>([]);
+  const [lists, setLists] = useState<Array<BasecampTodoList & { _todoSetTitle?: string; _cardTable?: boolean }>>([]);
   const [todos, setTodos] = useState<BasecampTodo[]>([]);
   const [project, setProject] = useState<BasecampProject | null>(null);
   const [list, setList] = useState<BasecampTodoList | null>(null);
@@ -1498,18 +1499,31 @@ function BrowseTab({ alreadyPinned, accountId, pending, onRowClick }: BrowseTabP
     const sets = p.todoSets && p.todoSets.length > 0
       ? p.todoSets
       : (p.todoSetId ? [{ id: p.todoSetId, title: 'To-dos' }] : []);
-    if (sets.length === 0) {
-      setError('Project has no to-do set');
+    const cardTables = p.cardTables ?? [];
+    if (sets.length === 0 && cardTables.length === 0) {
+      setError('Project has no to-do set or card table');
       setLoading(false);
       return;
     }
     try {
-      const batches = await Promise.all(sets.map((s) =>
+      // Todo-lists from each todoset.
+      const todoListBatches = await Promise.all(sets.map((s) =>
         zs.bcListTodoLists(p.id, s.id).then((res) =>
           res.ok ? res.data.map((l) => ({ ...l, _todoSetTitle: s.title })) : []
         ).catch(() => [] as Array<BasecampTodoList & { _todoSetTitle?: string }>)
       ));
-      setLists(batches.flat());
+      // v5.4.0 — Card tables surface as virtual lists. We don't fetch the
+      // cards here — just the table titles — and lazy-load on click via the
+      // `_cardTable` marker. todosUrl is empty (unused for card tables).
+      const cardTableVirtualLists = cardTables.map((ct) => ({
+        id: ct.id,
+        title: ct.title,
+        description: undefined as string | undefined,
+        todosUrl: '',
+        _cardTable: true as const,
+        _todoSetTitle: 'Card Tables',
+      }));
+      setLists([...todoListBatches.flat(), ...cardTableVirtualLists]);
     } catch (e) {
       setError((e as Error).message);
     } finally {
@@ -1517,10 +1531,16 @@ function BrowseTab({ alreadyPinned, accountId, pending, onRowClick }: BrowseTabP
     }
   };
 
-  const goToTodos = (l: BasecampTodoList) => {
+  const goToTodos = (l: BasecampTodoList & { _cardTable?: boolean }) => {
     if (!project) return;
     setList(l); setStep('todos'); setTodos([]); setLoading(true); setError(null);
-    zs.bcListTodos(project.id, l.id)
+    // v5.4.0 — Branch on the source: card tables use a different endpoint
+    // that flattens all cards across columns (excluding Done) into a single
+    // BasecampTodo[]. Once fetched, cards render identically to todos.
+    const fetcher = l._cardTable
+      ? zs.bcListCardsForTable(project.id, l.id)
+      : zs.bcListTodos(project.id, l.id);
+    fetcher
       .then((res) => { if (res.ok) setTodos(res.data); else setError(res.error); })
       .catch((e: Error) => setError(e.message))
       .finally(() => setLoading(false));
@@ -1647,46 +1667,51 @@ function BrowseTab({ alreadyPinned, accountId, pending, onRowClick }: BrowseTabP
               />
             );
           })}
-          <div style={{ marginTop: 6, display: 'flex', flexDirection: 'column', gap: 4 }}>
-            <div style={{ display: 'flex', gap: 6 }}>
-              <input
-                className="text-input"
-                placeholder="New to-do…"
-                value={createContent}
-                onChange={(e) => setCreateContent(e.target.value)}
-                onKeyDown={(e) => { if (e.key === 'Enter') handleCreateInBrowse(); }}
-                style={{ flex: 1, fontSize: 'var(--text-sm)' }}
-              />
-              <button
-                className="btn btn-primary"
-                disabled={!createContent.trim() || creating}
-                onClick={handleCreateInBrowse}
-                style={{ padding: '6px 12px', fontSize: 'var(--text-sm)', whiteSpace: 'nowrap' }}
-              >
-                {creating ? '…' : 'Create'}
-              </button>
-            </div>
-            {/* v5.2 — Labelled due-date row so users notice the option. */}
-            <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 'var(--text-xs)', color: 'var(--zen-tertiary-text)' }}>
-              <span style={{ minWidth: 56 }}>Due date</span>
-              <input
-                type="date"
-                className="text-input"
-                value={createDueOn}
-                onChange={(e) => setCreateDueOn(e.target.value)}
-                style={{ flex: 1, fontSize: 'var(--text-xs)', color: createDueOn ? 'var(--zen-text)' : 'var(--zen-tertiary-text)' }}
-              />
-              {createDueOn && (
+          {/* v5.4.0 — Inline-create is for Todo lists only. Card creation
+              has a different endpoint + column selector that we haven't
+              wired yet — hide the form when browsing a Card Table. */}
+          {!(list as BasecampTodoList & { _cardTable?: boolean })?._cardTable && (
+            <div style={{ marginTop: 6, display: 'flex', flexDirection: 'column', gap: 4 }}>
+              <div style={{ display: 'flex', gap: 6 }}>
+                <input
+                  className="text-input"
+                  placeholder="New to-do…"
+                  value={createContent}
+                  onChange={(e) => setCreateContent(e.target.value)}
+                  onKeyDown={(e) => { if (e.key === 'Enter') handleCreateInBrowse(); }}
+                  style={{ flex: 1, fontSize: 'var(--text-sm)' }}
+                />
                 <button
-                  onClick={() => setCreateDueOn('')}
-                  style={{ background: 'transparent', border: 'none', color: 'var(--zen-tertiary-text)', cursor: 'pointer', padding: 2, fontSize: 'var(--text-xs)' }}
-                  title="Clear due date"
+                  className="btn btn-primary"
+                  disabled={!createContent.trim() || creating}
+                  onClick={handleCreateInBrowse}
+                  style={{ padding: '6px 12px', fontSize: 'var(--text-sm)', whiteSpace: 'nowrap' }}
                 >
-                  ×
+                  {creating ? '…' : 'Create'}
                 </button>
-              )}
-            </label>
-          </div>
+              </div>
+              {/* v5.2 — Labelled due-date row so users notice the option. */}
+              <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 'var(--text-xs)', color: 'var(--zen-tertiary-text)' }}>
+                <span style={{ minWidth: 56 }}>Due date</span>
+                <input
+                  type="date"
+                  className="text-input"
+                  value={createDueOn}
+                  onChange={(e) => setCreateDueOn(e.target.value)}
+                  style={{ flex: 1, fontSize: 'var(--text-xs)', color: createDueOn ? 'var(--zen-text)' : 'var(--zen-tertiary-text)' }}
+                />
+                {createDueOn && (
+                  <button
+                    onClick={() => setCreateDueOn('')}
+                    style={{ background: 'transparent', border: 'none', color: 'var(--zen-tertiary-text)', cursor: 'pointer', padding: 2, fontSize: 'var(--text-xs)' }}
+                    title="Clear due date"
+                  >
+                    ×
+                  </button>
+                )}
+              </label>
+            </div>
+          )}
           {createError && <span style={{ fontSize: 'var(--text-xs)', color: 'var(--status-focused)' }}>{createError}</span>}
         </>
       )}
