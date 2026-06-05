@@ -84,7 +84,21 @@ export class PersistenceService {
   }
 
   saveRecords(records: DailyRecord[]): void {
-    store.set('dailyRecords', records);
+    // v5.5.0 — Cap retention at 90 days so the records array doesn't grow
+    // unboundedly. Previously `getRecords()` could return a year+ of daily
+    // records over time (each containing N sessions); every Basecamp-event
+    // broadcast triggered a full reload, scaling linearly with usage. We
+    // keep the most-recent 90 days hot — anything older drops off. If
+    // export-history-to-CSV becomes a feature, we'll need an archive file
+    // instead of pruning; for now a 90-day rolling window matches the
+    // Timesheet UI's effective scope.
+    const RETENTION_DAYS = 90;
+    const cutoffMs = Date.now() - RETENTION_DAYS * 24 * 60 * 60 * 1000;
+    const fresh = records.filter((r) => {
+      const d = new Date(r.date.split('T')[0]).getTime();
+      return Number.isFinite(d) && d >= cutoffMs;
+    });
+    store.set('dailyRecords', fresh);
   }
 
   getCategories(): string[] {

@@ -1,0 +1,14 @@
+{
+  "$schema": "https://unpkg.com/knip@5/schema.json",
+  "entry": [
+    "src/main/index.ts",
+    "src/main/preload.ts",
+    "src/renderer/dashboard-main.tsx",
+    "src/renderer/mini-timer-main.tsx",
+    "src/renderer/alert-main.tsx",
+    "src/renderer/main.tsx",
+    "scripts/generate-license.js"
+  ],
+  "project": ["src/**/*.{ts,tsx}", "scripts/**/*.js"],
+  "ignoreDependencies": ["electron-store", "electron-updater", "bonjour-service"]
+}

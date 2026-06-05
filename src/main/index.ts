@@ -79,7 +79,12 @@ let timerBasecamp: { accountId: number; projectId: number; todoId: number; todoL
 // saved to the local session record either way.
 let currentSessionNotes = '';
 let longRunGuardFired = false;
-const LONG_RUN_GUARD_SECONDS = 3 * 3600; // 3 hours — prompts the user to confirm they're still working
+// v5.5.0 — User-configurable. Default 3h; overridden by AppSettings.longRunGuardHours.
+const DEFAULT_LONG_RUN_GUARD_SECONDS = 3 * 3600;
+function getLongRunGuardSeconds(): number {
+  const hrs = persistence.getSettings().longRunGuardHours;
+  return Number.isFinite(hrs) && hrs! > 0 ? Math.round(hrs! * 3600) : DEFAULT_LONG_RUN_GUARD_SECONDS;
+}
 
 // Pending timesheet entry awaiting user confirmation (one at a time — only one timer can run).
 // When `requireTimesheetConfirmation` is on, stopTimer parks the entry here and opens an
@@ -213,13 +218,26 @@ app.on('ready', async () => {
   //   • Close → preventDefault + hide; never calls `app.dock?.hide/show`
   if (process.platform === 'darwin') {
     try { app.setActivationPolicy('regular'); } catch (e) { console.warn('[startup] setActivationPolicy failed:', e); }
-    const iconPath = path.join(__dirname, '../../build/icon.png');
+    // v5.4.1 — In production the path `../../build/icon.png` doesn't exist
+    // (`build/` isn't copied into app.asar). The load silently failed and we
+    // skipped `setIcon`, expecting macOS to fall back to the bundle's
+    // CFBundleIconFile (icon.icns) — but in some cases that failed too,
+    // leaving the dock with a running-indicator dot but no icon at all.
+    // Explicitly point at the bundle's icon.icns in production (always
+    // present, set up by electron-builder), with the dev PNG as fallback.
+    const iconPath = app.isPackaged
+      ? path.join(process.resourcesPath, 'icon.icns')
+      : path.join(__dirname, '../../build/icon.png');
     try {
       const dockIcon = nativeImage.createFromPath(iconPath);
       if (!dockIcon.isEmpty()) {
         app.dock?.setIcon(dockIcon);
+      } else {
+        console.warn('[startup] dock icon path resolved but image is empty:', iconPath);
       }
-    } catch (_) { /* icon not found in dev — that's ok */ }
+    } catch (e) {
+      console.warn('[startup] dock icon load failed:', iconPath, e);
+    }
   }
 
   // Create tray with callbacks for context menu actions.
@@ -312,15 +330,21 @@ function startCheckInScheduler() {
       const hour = now.getHours();
       const minute = now.getMinutes();
       const day = now.getDay(); // 0=Sun, 6=Sat
-      // Weekday 9:05am - 9:30am window
+      // Weekday-only.
       if (day === 0 || day === 6) return;
-      if (hour !== 9) return;
-      if (minute < 5 || minute > 30) return;
-      // Don't double-fire same day
+      // Don't double-fire same day.
       const todayStr = isoDateLocal(now);
       const settings = persistence.getSettings();
       if (settings.checkInPromptEnabled === false) return;
       if (settings.lastCheckInDate === todayStr) return;
+      // v5.5.0 — Configurable check-in hour (default 9). Fires in the
+      // :05-:30 minute window of that hour so users have a 25-minute grace
+      // period to be at their machine when the prompt opens.
+      const targetHour = Number.isFinite(settings.checkInPromptHour) && settings.checkInPromptHour! >= 0 && settings.checkInPromptHour! < 24
+        ? settings.checkInPromptHour!
+        : 9;
+      if (hour !== targetHour) return;
+      if (minute < 5 || minute > 30) return;
       // Require signed-in user + Basecamp connection
       if (!persistence.getUser()) return;
       if (!basecamp.oauth.isConnected()) return;
@@ -481,14 +505,24 @@ function togglePopover() {
   // popover otherwise ends up pinned to the previous Space.
   popoverWindow.setAlwaysOnTop(true, 'screen-saver');
   if (process.platform === 'darwin') {
-    popoverWindow.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
-    // v5.3.4 — `visibleOnFullScreen: true` carries a documented Electron
-    // side effect (issue #31538): it hides the Dock icon by setting
-    // `NSWindowCollectionBehaviorFullScreenAuxiliary` on the app's window
-    // collection. Immediately re-asserting `.regular` policy restores the
-    // Dock icon without losing the cross-Space visibility the popover
-    // needs. Each show re-applies the flag → each show must re-restore.
-    try { app.setActivationPolicy('regular'); } catch (e) { console.warn('[togglePopover] setActivationPolicy failed:', e); }
+    // v5.4.1 — `skipTransformProcessType: true` is the documented Electron
+    // opt-out for the dock-hide side effect of setVisibleOnAllWorkspaces:
+    //   "this method will by default transform the process type between
+    //    UIElementApplication and ForegroundApplication to ensure the
+    //    correct behavior. However, this will hide the window and dock
+    //    for a short time every time it is called."
+    // (https://www.electronjs.org/docs/latest/api/browser-window#winsetvisibleonallworkspacesvisible-options)
+    //
+    // v5.3.4 → v5.4.0 used `setActivationPolicy('regular')` to RESTORE the
+    // dock after the transform fired. That was a workaround for what the
+    // proper API parameter prevents in the first place. Restoring after
+    // the fact is also racy — the transform fires during the next show()
+    // event, not synchronously when the flag is set, so any pre-show
+    // restore gets immediately undone.
+    popoverWindow.setVisibleOnAllWorkspaces(true, {
+      visibleOnFullScreen: true,
+      skipTransformProcessType: true,
+    });
   }
 
   popoverWindow.show();
@@ -934,15 +968,25 @@ function handleIncomingPing(data: { senderId: string; senderName: string; messag
   };
   recentPings = [ping, ...recentPings].slice(0, RECENT_PINGS_MAX);
 
-  // Native notification — visible across full-screen apps, plays a sound by default.
+  // v5.5.0 — Pings now open a full alert window (like meeting requests)
+  // instead of a quiet macOS notification banner. The alert plays a soft
+  // two-note chime on mount and centres on the screen, so the user can't
+  // miss a teammate's heads-up while in focus mode. The Notifications-
+  // panel-style ping list in the popover still receives the broadcast for
+  // catch-up after the fact.
   try {
-    new Notification({
-      title: data.senderName,
-      body: data.message,
-      silent: false,
-    }).show();
+    const alertWin = createAlertWindow(getRendererURL('alert.html'), {
+      width: 380,
+      height: 300,
+    });
+    bindAlertPayload(alertWin, {
+      type: 'pingReceived',
+      from: data.senderName,
+      senderId: data.senderId,
+      message: data.message,
+    });
   } catch (err) {
-    console.warn('Failed to show ping notification:', err);
+    console.warn('Failed to show ping alert window:', err);
   }
 
   broadcastToWindows(IPC.TEAM_PING_RECEIVED, ping);
@@ -1029,7 +1073,8 @@ function startTimer(taskLabel: string, category?: string, targetDuration?: numbe
 
       // Long-run guard — once per session, prompt the user when they cross
       // the threshold so a forgotten timer can't quietly pollute the timesheet.
-      if (!longRunGuardFired && elapsed >= LONG_RUN_GUARD_SECONDS) {
+      // v5.5.0 — threshold is now user-configurable via AppSettings.longRunGuardHours.
+      if (!longRunGuardFired && elapsed >= getLongRunGuardSeconds()) {
         longRunGuardFired = true;
         showLongRunAlert(elapsed);
       }
@@ -1804,6 +1849,7 @@ function setupIPC() {
       win.webContents.send('plan:open-picker');
     }
   });
+
 
   ipcMain.on(IPC.CLOSE_POPOVER, () => {
     popoverWindow?.hide();

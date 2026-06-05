@@ -474,7 +474,20 @@ interface PinnedRowProps {
   onLogTime: () => void;
 }
 
-function PinnedRow({
+// v5.5.0 — Custom equality skips re-renders when only the parent's inline
+// callback references changed (which happens every 1s because TIMER_UPDATE
+// re-renders DashboardApp). We compare the data props that actually drive
+// the row's visual state; the parent's arrow-function callbacks are
+// considered identity-stable for memo purposes (they close over `item` from
+// the same map iteration so the behaviour is equivalent).
+const arePinnedRowPropsEqual = (prev: PinnedRowProps, next: PinnedRowProps) =>
+  prev.item === next.item &&
+  prev.running === next.running &&
+  prev.paused === next.paused &&
+  prev.trackedToday === next.trackedToday &&
+  prev.editingEstimate === next.editingEstimate;
+
+function PinnedRowImpl({
   item, running, paused, trackedToday, editingEstimate,
   onStartEditEstimate, onSaveEstimate, onCancelEditEstimate,
   onStartTimer, onPauseTimer, onResumeTimer, onStopTimer, onUnpin, onToggleComplete, onLogTime,
@@ -710,6 +723,12 @@ function PinnedRow({
     </div>
   );
 }
+
+// v5.5.0 — Memoized. Without this, the 1Hz TIMER_UPDATE broadcast re-renders
+// the whole DashboardApp → TodayTab tree → every PinnedRow even if only its
+// own props haven't changed. With ~10 pins that's 10 unnecessary
+// reconciliations per second.
+const PinnedRow = React.memo(PinnedRowImpl, arePinnedRowPropsEqual);
 
 // ── PinPicker v2 ───────────────────────────────────────────────────
 // Multi-tab picker: My Todos / Due / Recents / Search / Browse.

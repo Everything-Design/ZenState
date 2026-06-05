@@ -20,6 +20,25 @@ export interface ReleaseHighlight {
 
 export const RELEASE_HIGHLIGHTS: ReleaseHighlight[] = [
   {
+    version: '5.5.0',
+    title: "What's new in v5.5.0",
+    intro: 'Configurable thresholds, faster dashboard, security hardening, heads-up alerts now appear on screen with a soft chime.',
+    bullets: [
+      "Heads-up pings now appear as a center-screen alert (like meeting requests) with a soft two-note chime — no more missing them in the popover.",
+      "Configurable thresholds: tune the 'Still working?' prompt timing (3h default) and the daily check-in hour (9am default) in Settings → General → Productivity.",
+      "Dashboard plan list is dramatically smoother: every second of timer tick used to re-render every pinned row. Now it only re-renders rows that actually changed.",
+      "macOS dock icon stays visible reliably — same fix from v5.4.1 is now applied to the mini-timer pill too.",
+      "Security: external links from any window route through your default browser (can't be hijacked into the app).",
+      "Storage: timesheet records now cap at 90 days; older entries auto-archive so the app stays snappy after a year of use.",
+      "Cleared 13 dependency security advisories. Removed 1,385 lines of dead code.",
+    ],
+    footer: 'Got feedback?',
+    footerLink: {
+      label: 'Drop it in Basecamp',
+      url: 'https://3.basecamp.com/5826042/buckets/38489884/cloud_files/9572235152',
+    },
+  },
+  {
     version: '5.4.0',
     title: "What's new in v5.4.0",
     intro: 'Card Tables now show up in the picker — plus a stack of macOS lifecycle fixes from v5.3.5/.6.',

@@ -686,6 +686,46 @@ export default function SettingsTab({ currentUser, peers, isPro, licenseState, o
           <div style={{ fontSize: 10, color: 'var(--zen-tertiary-text)', marginBottom: 12 }}>
             Break reminders alert you during long focus sessions. Idle detection auto-pauses the timer when you step away.
           </div>
+
+          {/* v5.5.0 — Long-run guard threshold + check-in time configurable. */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
+            <span style={{ fontSize: 11, color: 'var(--zen-secondary-text)', flex: 1 }}>"Still working?" prompt after</span>
+            <input
+              type="number"
+              min="1"
+              max="12"
+              step="0.5"
+              value={appSettings.longRunGuardHours ?? 3}
+              onChange={(e) => {
+                const hrs = parseFloat(e.target.value);
+                if (Number.isFinite(hrs) && hrs > 0 && hrs <= 12) {
+                  updateAppSettings({ longRunGuardHours: hrs });
+                }
+              }}
+              className="text-input"
+              style={{ width: 60, textAlign: 'center', fontSize: 12 }}
+            />
+            <span style={{ fontSize: 11, color: 'var(--zen-tertiary-text)' }}>hours of one timer</span>
+          </div>
+
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}>
+            <span style={{ fontSize: 11, color: 'var(--zen-secondary-text)', flex: 1 }}>Daily check-in prompt fires at</span>
+            <input
+              type="number"
+              min="0"
+              max="23"
+              value={appSettings.checkInPromptHour ?? 9}
+              onChange={(e) => {
+                const hr = parseInt(e.target.value);
+                if (Number.isFinite(hr) && hr >= 0 && hr < 24) {
+                  updateAppSettings({ checkInPromptHour: hr });
+                }
+              }}
+              className="text-input"
+              style={{ width: 60, textAlign: 'center', fontSize: 12 }}
+            />
+            <span style={{ fontSize: 11, color: 'var(--zen-tertiary-text)' }}>:00 (24h, weekdays)</span>
+          </div>
           </ProGate>
 
           <div className="divider" />

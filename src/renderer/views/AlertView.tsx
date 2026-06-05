@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 
 interface Props {
-  type: 'meetingRequest' | 'emergencyRequest' | 'meetingResponse' | 'timerComplete' | 'breakReminder' | 'longRunGuard' | 'timesheetConfirm' | 'idlePrompt';
+  type: 'meetingRequest' | 'emergencyRequest' | 'meetingResponse' | 'timerComplete' | 'breakReminder' | 'longRunGuard' | 'timesheetConfirm' | 'idlePrompt' | 'pingReceived';
   from: string;
   senderId: string;
   message?: string;
@@ -32,6 +32,39 @@ export default function AlertView({ type, from, senderId, message, accepted, tar
   const [replyText, setReplyText] = useState('');
   const [selectedQuickReply, setSelectedQuickReply] = useState<string | null>(null);
   const isEmergency = type === 'emergencyRequest';
+
+  // v5.5.0 — Sound effect for the ping-received alert. Synthesised via Web
+  // Audio API so we don't have to ship an audio asset. A two-note chime
+  // (E5 → G5) — friendly, attention-grabbing, not jarring. Fires once on
+  // mount when the alert is `pingReceived`.
+  useEffect(() => {
+    if (type !== 'pingReceived') return;
+    try {
+      const ctx = new (window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext)();
+      const chime = (freq: number, startAt: number, duration: number) => {
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        osc.type = 'sine';
+        osc.frequency.value = freq;
+        // Quick attack, short sustain, smooth decay so it sounds like a soft bell.
+        gain.gain.setValueAtTime(0, ctx.currentTime + startAt);
+        gain.gain.linearRampToValueAtTime(0.25, ctx.currentTime + startAt + 0.02);
+        gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + startAt + duration);
+        osc.connect(gain);
+        gain.connect(ctx.destination);
+        osc.start(ctx.currentTime + startAt);
+        osc.stop(ctx.currentTime + startAt + duration);
+      };
+      chime(659.25, 0.00, 0.35);   // E5
+      chime(783.99, 0.18, 0.45);   // G5
+      // Auto-close the context after the sound finishes so we don't leak it.
+      setTimeout(() => ctx.close().catch(() => { /* already closed */ }), 1000);
+    } catch (e) {
+      // Web Audio unavailable — fall back to silence. The alert window is
+      // visible regardless, so the user still sees the ping.
+      console.warn('[AlertView] ping chime failed:', e);
+    }
+  }, [type]);
 
   function handleAccept() {
     const msg = selectedQuickReply || replyText || undefined;
@@ -272,6 +305,59 @@ export default function AlertView({ type, from, senderId, message, accepted, tar
   }
 
   // Meeting response view — shown when someone accepts/declines your request
+  // v5.5.0 — Ping received as a full-screen alert (like meeting request)
+  // instead of a tucked-away notification in the popover. Plays a soft
+  // two-note chime on mount (see useEffect above).
+  if (type === 'pingReceived') {
+    return (
+      <div className="alert-panel fade-in" style={{ width: 340 }}>
+        <div style={{ textAlign: 'center', fontSize: 40, marginBottom: 10 }}>
+          📣
+        </div>
+        <div className="alert-title" style={{
+          textAlign: 'center',
+          color: 'var(--zen-text)',
+          marginBottom: 4,
+        }}>
+          Heads up
+        </div>
+        <div style={{
+          textAlign: 'center',
+          fontSize: 13,
+          color: 'var(--zen-secondary-text)',
+          marginBottom: message ? 12 : 20,
+        }}>
+          from <strong>{from}</strong>
+        </div>
+        {message && (
+          <div style={{
+            padding: '12px 14px',
+            background: 'var(--zen-tertiary-bg)',
+            borderRadius: 8,
+            fontSize: 13,
+            color: 'var(--zen-text)',
+            marginBottom: 20,
+            maxHeight: 120,
+            overflow: 'auto',
+            wordBreak: 'break-word',
+            whiteSpace: 'pre-wrap',
+            lineHeight: 1.4,
+          }}>
+            {message}
+          </div>
+        )}
+        <button
+          className="btn btn-primary"
+          style={{ width: '100%' }}
+          onClick={onDismiss}
+          autoFocus
+        >
+          Got it
+        </button>
+      </div>
+    );
+  }
+
   if (type === 'meetingResponse') {
     return (
       <div className="alert-panel fade-in" style={{ width: 320 }}>

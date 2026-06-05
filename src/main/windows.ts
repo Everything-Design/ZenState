@@ -1,7 +1,32 @@
-import { BrowserWindow } from 'electron';
+import { BrowserWindow, shell } from 'electron';
 import path from 'path';
 
 const isMac = process.platform === 'darwin';
+
+// v5.5.0 — Security hardening (Electronegativity LIMIT_NAVIGATION_GLOBAL_CHECK).
+// Apply to every BrowserWindow we create. Two protections:
+//   1. setWindowOpenHandler returns `deny` so any `window.open` call from a
+//      compromised renderer cannot spawn a new BrowserWindow under our
+//      privileged preload. Trusted external URLs route through
+//      `shell.openExternal()` via the `openExternal` IPC channel (validated
+//      to http/https).
+//   2. `will-navigate` is blocked for any URL outside the renderer's own
+//      file:// or dev-server origin — prevents a renderer from being
+//      hijacked into navigating to an attacker-controlled URL.
+function hardenWindow(win: BrowserWindow) {
+  win.webContents.setWindowOpenHandler(({ url }) => {
+    // Optional: route safe http(s) URLs to the system browser. We already
+    // do this via the explicit `app:open-external` IPC, so block here.
+    if (url.startsWith('http://') || url.startsWith('https://')) {
+      shell.openExternal(url).catch(() => { /* best-effort */ });
+    }
+    return { action: 'deny' };
+  });
+  win.webContents.on('will-navigate', (e, url) => {
+    const allowed = url.startsWith('file://') || url.startsWith('http://localhost:5173');
+    if (!allowed) e.preventDefault();
+  });
+}
 
 export function createPopoverWindow(url: string): BrowserWindow {
   const win = new BrowserWindow({
@@ -88,6 +113,7 @@ export function createPopoverWindow(url: string): BrowserWindow {
     win.hide();
   });
 
+  hardenWindow(win);
   return win;
 }
 
@@ -114,6 +140,7 @@ export function createDashboardWindow(url: string): BrowserWindow {
     win.webContents.openDevTools({ mode: 'detach' });
   }
 
+  hardenWindow(win);
   return win;
 }
 
@@ -156,7 +183,10 @@ export function createMiniTimerWindow(url: string, position?: { x: number; y: nu
   if (isMac) {
     // Stay visible across Spaces and over full-screen apps. The order matters:
     // setVisibleOnAllWorkspaces first, then bump the always-on-top level.
-    win.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
+    // v5.5.0 — `skipTransformProcessType: true` prevents the dock-hide side
+    // effect (Electron issue #31538). Same fix we applied to the popover in
+    // v5.4.1 — the pill had been carrying the unfixed pattern.
+    win.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true, skipTransformProcessType: true });
     win.setAlwaysOnTop(true, 'screen-saver');
   } else {
     // 'screen-saver' is also the highest standard level on Windows — without
@@ -194,6 +224,7 @@ export function createMiniTimerWindow(url: string, position?: { x: number; y: nu
   }
 
   win.loadURL(url);
+  hardenWindow(win);
   return win;
 }
 
@@ -232,5 +263,6 @@ export function createAlertWindow(url: string, options: { width: number; height:
   win.setPosition(x, y);
 
   win.loadURL(url);
+  hardenWindow(win);
   return win;
 }

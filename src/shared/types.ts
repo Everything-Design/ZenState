@@ -143,6 +143,11 @@ export interface AppSettings {
   // We use this to avoid re-firing the prompt the same day after the user
   // already answered or explicitly skipped.
   lastCheckInDate?: string;
+  // v5.5.0 — User-configurable thresholds. Each defaults to its prior
+  // hard-coded value if unset, so existing installs see no behaviour change
+  // until they explicitly tune them in Settings.
+  longRunGuardHours?: number;       // default 3 — "Still working?" prompt after N hours of one continuous timer
+  checkInPromptHour?: number;       // default 9 (9am) — when the daily Basecamp check-in scheduler fires
 }
 
 // ── Basecamp Types ─────────────────────────────────────────────
