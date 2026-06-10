@@ -349,7 +349,13 @@ export default function MiniTimerApp() {
           display: 'flex',
           alignItems: 'center',
           gap: 8,
-          padding: '0 8px 0 10px',
+          // v5.6.1 — Symmetric horizontal padding. Previously '0 8px 0 10px'
+          // put the dot 10px from the left edge while the stop-square icon
+          // (12px icon + 4px IconBtn padding + 8px pill padding = 12px from
+          // the right edge) sat with less visual breathing room. The button
+          // cluster on the right has heavier visual weight than the dot on
+          // the left, so they need the SAME inset to read as balanced.
+          padding: '0 10px',
           cursor: 'pointer',
         }}
       >

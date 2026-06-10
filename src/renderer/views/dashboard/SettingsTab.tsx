@@ -727,28 +727,6 @@ export default function SettingsTab({ currentUser, peers, isPro, licenseState, o
             <span style={{ fontSize: 11, color: 'var(--zen-tertiary-text)' }}>:00 (24h, weekdays)</span>
           </div>
 
-          {/* v5.6.0 — Daily hours target drives the progress ring in the
-              dashboard Plan header + popover footer. Range 1-16h covers
-              part-time through long workdays. */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}>
-            <span style={{ fontSize: 11, color: 'var(--zen-secondary-text)', flex: 1 }}>Daily hours target (progress ring)</span>
-            <input
-              type="number"
-              min="1"
-              max="16"
-              step="0.5"
-              value={appSettings.dailyHoursTarget ?? 8}
-              onChange={(e) => {
-                const hrs = parseFloat(e.target.value);
-                if (Number.isFinite(hrs) && hrs > 0 && hrs <= 16) {
-                  updateAppSettings({ dailyHoursTarget: hrs });
-                }
-              }}
-              className="text-input"
-              style={{ width: 60, textAlign: 'center', fontSize: 12 }}
-            />
-            <span style={{ fontSize: 11, color: 'var(--zen-tertiary-text)' }}>hours / day</span>
-          </div>
           </ProGate>
 
           <div className="divider" />

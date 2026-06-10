@@ -1299,7 +1299,10 @@ function stopTimer() {
       showTimesheetConfirmAlert(capturedTaskLabel, totalDuration, capturedNotes, link.projectId);
     } else {
       const hours = (totalDuration / 3600).toFixed(2);
-      const date = isoDateLocal(new Date());
+      // v5.6.1 — Use the local row's date key (derived from the session's
+      // startTime), not wall-clock at post-time. Stops sessions that cross
+      // midnight from landing under one day locally and another day on BC.
+      const date = saved.dateStr;
       // If the user wrote notes mid-session, use them as the timesheet entry
       // description — same convention as the confirm-popup path.
       const description = capturedNotes || capturedTaskLabel;
@@ -1442,13 +1445,27 @@ function setupIPC() {
     if (!pending) return;
     pendingTimesheetEntry = null;
 
-    if (payload.action === 'discard') return;
+    if (payload.action === 'discard') {
+      // v5.6.1 — Discarding still mutated local state (the session was already
+      // saved by stopTimer with synced=false). Broadcast so the dashboard
+      // re-fetches and the row stops being flagged as "in flight". Without
+      // this the row only refreshed via the 500ms post-stop fallback.
+      broadcastToWindows('basecamp:timesheet-updated', {
+        projectId: pending.basecamp.projectId,
+        todoId: pending.basecamp.todoId,
+      });
+      return;
+    }
 
     const link = pending.basecamp;
     const hours = payload.hours && /^\d+(\.\d+)?$/.test(payload.hours)
       ? payload.hours
       : (pending.durationSec / 3600).toFixed(2);
-    const date = isoDateLocal(new Date());
+    // v5.6.1 — Use the parked session's date key (derived from its startTime
+    // at save time), not wall-clock at confirm-time. Without this, a session
+    // stopped at 11:58pm and confirmed at 12:02am posted to BC under today
+    // while the local row sat under yesterday.
+    const date = pending.sessionDateStr;
     // The user-typed notes become the timesheet entry's description (the field
     // Basecamp displays next to hours on the timesheet view). Fall back to the
     // task label only if no notes were provided, so the entry isn't description-less.
@@ -1646,8 +1663,16 @@ function setupIPC() {
 
     const entryId = session.basecamp?.entryId;
     const hadBasecampLink = !!session.basecamp?.todoId;
+    const projectId = session.basecamp?.projectId;
+    const todoId = session.basecamp?.todoId;
 
     timeTracker.deleteSession(data.sessionId, data.date);
+
+    // v5.6.1 — Always broadcast after a local delete, regardless of whether a
+    // Basecamp delete follows. Previously the broadcast only fired on BC
+    // success, so deleting a non-linked session (or a session whose BC delete
+    // failed) left every other open surface displaying the stale row.
+    broadcastToWindows('basecamp:timesheet-updated', { projectId, todoId });
 
     if (!entryId) {
       // Either never linked, or pre-v5.1.0 session without persisted entryId.
@@ -1657,7 +1682,6 @@ function setupIPC() {
 
     try {
       await basecamp.api.deleteTimesheetEntry(entryId);
-      broadcastToWindows('basecamp:timesheet-updated', { projectId: session.basecamp?.projectId, todoId: session.basecamp?.todoId });
       return { ok: true, basecampDeleted: true, hadBasecampLink };
     } catch (err) {
       console.warn('Local session deleted but Basecamp delete failed:', err);

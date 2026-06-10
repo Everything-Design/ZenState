@@ -20,11 +20,26 @@ export interface ReleaseHighlight {
 
 export const RELEASE_HIGHLIGHTS: ReleaseHighlight[] = [
   {
+    version: '5.6.1',
+    title: "What's new in v5.6.1",
+    intro: 'Fixes timesheet entries landing on the wrong day when you stop near midnight, plus quieter Basecamp-vs-ZenState drift.',
+    bullets: [
+      "Sessions stopped near midnight now post to Basecamp on the same day they appear under in ZenState. Previously a session stopped at 11:58pm and confirmed at 12:02am posted to today on BC while sitting under yesterday in your Timesheet.",
+      "Deleting a session in the Timesheet tab refreshes every open surface immediately, even when the session had no Basecamp link.",
+      "Discarding the 'Review before posting' popup also refreshes the dashboard, so the in-flight badge clears without waiting on the post-stop refresh.",
+      "Removed the daily-hours progress ring shipped in v5.6.0 — turns out staring at a target makes most days feel worse, not better.",
+    ],
+    footer: 'Got feedback?',
+    footerLink: {
+      label: 'Drop it in Basecamp',
+      url: 'https://3.basecamp.com/5826042/buckets/38489884/cloud_files/9572235152',
+    },
+  },
+  {
     version: '5.6.0',
     title: "What's new in v5.6.0",
-    intro: 'Foundation upgrade + daily progress ring + 4 sneaky bug fixes.',
+    intro: 'Foundation upgrade + 4 sneaky bug fixes.',
     bullets: [
-      "Daily hours target with a colour-coded progress ring on the dashboard. Set your target in Settings → Productivity (default 8h). Muted → blue → green when you hit the goal.",
       "Faster dashboard: Team, Timesheet, and Settings tabs now lazy-load — opens the dashboard with only the Plan tab in the initial bundle.",
       "Pings respect meeting mode now. If your timer is running and meeting mode is on, incoming heads-ups skip the full-screen alert + chime (still saved to the popover for catch-up later).",
       "Stopwatch-add + meeting-toggle no longer creates ghost state. Four state-cancellation bugs the ECC click-path audit caught are fixed.",
