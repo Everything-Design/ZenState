@@ -33,37 +33,19 @@ export default function AlertView({ type, from, senderId, message, accepted, tar
   const [selectedQuickReply, setSelectedQuickReply] = useState<string | null>(null);
   const isEmergency = type === 'emergencyRequest';
 
-  // v5.5.0 — Sound effect for the ping-received alert. Synthesised via Web
-  // Audio API so we don't have to ship an audio asset. A two-note chime
-  // (E5 → G5) — friendly, attention-grabbing, not jarring. Fires once on
-  // mount when the alert is `pingReceived`.
+  // v5.6.2 — Sound effect for the ping-received alert. Replaced the v5.5.0
+  // Web-Audio two-note chime with a packaged WAV ("alarm.wav" in the
+  // renderer's public dir). Same fire-once-on-mount semantics, calmer
+  // sound. Heads-up only — no OS notification, no other side effect.
   useEffect(() => {
     if (type !== 'pingReceived') return;
-    try {
-      const ctx = new (window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext)();
-      const chime = (freq: number, startAt: number, duration: number) => {
-        const osc = ctx.createOscillator();
-        const gain = ctx.createGain();
-        osc.type = 'sine';
-        osc.frequency.value = freq;
-        // Quick attack, short sustain, smooth decay so it sounds like a soft bell.
-        gain.gain.setValueAtTime(0, ctx.currentTime + startAt);
-        gain.gain.linearRampToValueAtTime(0.25, ctx.currentTime + startAt + 0.02);
-        gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + startAt + duration);
-        osc.connect(gain);
-        gain.connect(ctx.destination);
-        osc.start(ctx.currentTime + startAt);
-        osc.stop(ctx.currentTime + startAt + duration);
-      };
-      chime(659.25, 0.00, 0.35);   // E5
-      chime(783.99, 0.18, 0.45);   // G5
-      // Auto-close the context after the sound finishes so we don't leak it.
-      setTimeout(() => ctx.close().catch(() => { /* already closed */ }), 1000);
-    } catch (e) {
-      // Web Audio unavailable — fall back to silence. The alert window is
-      // visible regardless, so the user still sees the ping.
-      console.warn('[AlertView] ping chime failed:', e);
-    }
+    const audio = new Audio('./alarm.wav');
+    audio.volume = 1.0;
+    audio.play().catch((e) => {
+      // Autoplay blocked or asset missing — alert window is visible
+      // regardless, so the user still sees the ping.
+      console.warn('[AlertView] ping alarm failed:', e);
+    });
   }, [type]);
 
   function handleAccept() {
@@ -306,8 +288,8 @@ export default function AlertView({ type, from, senderId, message, accepted, tar
 
   // Meeting response view — shown when someone accepts/declines your request
   // v5.5.0 — Ping received as a full-screen alert (like meeting request)
-  // instead of a tucked-away notification in the popover. Plays a soft
-  // two-note chime on mount (see useEffect above).
+  // instead of a tucked-away notification in the popover. Plays the
+  // packaged alarm.wav on mount (see useEffect above).
   if (type === 'pingReceived') {
     return (
       <div className="alert-panel fade-in" style={{ width: 340 }}>

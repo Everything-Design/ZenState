@@ -21,6 +21,7 @@ const zs = window.zenstate as unknown as {
   tomorrowPinMany: (items: PinnedTodo[]) => Promise<{ plan: unknown; added: number }>;
 };
 import AddSessionModal from '../../components/AddSessionModal';
+import ProgressRing, { formatRingLabel } from '../../components/ProgressRing';
 
 interface TimerState {
   elapsed: number;
@@ -200,6 +201,26 @@ export default function TodayTab({ timerState, records, onOpenSettings, onRefres
 
   const totalTrackedToday = useMemo(() => todaySessions.reduce((sum, s) => sum + s.duration, 0), [todaySessions]);
 
+  // v5.6.0 — Fetch the user's daily-hours target so the progress ring in
+  // the header can show today's progress vs. their goal. Defaults to 8h
+  // if unset. Refreshes when settings:updated broadcasts from main.
+  const [dailyTargetHours, setDailyTargetHours] = useState(8);
+  useEffect(() => {
+    let cancelled = false;
+    const fetchTarget = () => {
+      window.zenstate.getSettings().then((s) => {
+        if (cancelled) return;
+        const h = s?.dailyHoursTarget;
+        if (Number.isFinite(h) && (h as number) > 0) setDailyTargetHours(h as number);
+      }).catch((e: unknown) => console.warn('[TodayTab] getSettings failed:', e));
+    };
+    fetchTarget();
+    const off = window.zenstate.on('settings:updated', fetchTarget);
+    return () => { cancelled = true; off(); };
+  }, []);
+  const dailyTargetSeconds = dailyTargetHours * 3600;
+  const dailyProgress = dailyTargetSeconds > 0 ? totalTrackedToday / dailyTargetSeconds : 0;
+
   // Compute time-tracked-today per pinned todo so each row can show progress vs. estimate.
   const trackedByTodoId = useMemo(() => {
     const map = new Map<number, number>();
@@ -216,15 +237,41 @@ export default function TodayTab({ timerState, records, onOpenSettings, onRefres
   return (
     <div className="fade-in" style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-5)', maxWidth: 720, margin: '0 auto', paddingTop: 'var(--space-3)' }}>
       {/* Header */}
-      <div>
-        <h1 style={{ fontSize: 'var(--text-2xl)', fontWeight: 700, letterSpacing: '-0.02em', margin: 0, color: 'var(--zen-text)' }}>
-          {dayHeader()}
-        </h1>
-        <p style={{ fontSize: 'var(--text-md)', color: 'var(--zen-secondary-text)', margin: '6px 0 0', fontWeight: 400 }}>
-          {plan.items.length === 0
-            ? 'Pick a few things to focus on today.'
-            : `Focusing on ${plan.items.length} ${plan.items.length === 1 ? 'thing' : 'things'} today.`}
-        </p>
+      <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 16 }}>
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <h1 style={{ fontSize: 'var(--text-2xl)', fontWeight: 700, letterSpacing: '-0.02em', margin: 0, color: 'var(--zen-text)' }}>
+            {dayHeader()}
+          </h1>
+          <p style={{ fontSize: 'var(--text-md)', color: 'var(--zen-secondary-text)', margin: '6px 0 0', fontWeight: 400 }}>
+            {plan.items.length === 0
+              ? 'Pick a few things to focus on today.'
+              : `Focusing on ${plan.items.length} ${plan.items.length === 1 ? 'thing' : 'things'} today.`}
+          </p>
+        </div>
+        {/* v5.6.0 — Daily-hours progress ring. Tappable to open Settings
+            where the target can be tuned. Shows tracked / target inside,
+            with the ring colour ramping muted → blue → green at 100%. */}
+        <button
+          onClick={onOpenSettings}
+          title={`${formatRingLabel(totalTrackedToday)} of ${dailyTargetHours}h tracked today — click to adjust target`}
+          style={{
+            display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4,
+            background: 'transparent', border: 'none', cursor: 'pointer',
+            padding: '4px 8px', borderRadius: 8,
+          }}
+          onMouseEnter={(e) => { e.currentTarget.style.background = 'var(--zen-hover)'; }}
+          onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent'; }}
+        >
+          <ProgressRing
+            value={dailyProgress}
+            size={52}
+            strokeWidth={4}
+            label={formatRingLabel(totalTrackedToday)}
+          />
+          <span style={{ fontSize: 10, color: 'var(--zen-tertiary-text)', fontVariantNumeric: 'tabular-nums' }}>
+            of {dailyTargetHours}h
+          </span>
+        </button>
       </div>
 
       {/* Today's plan */}
