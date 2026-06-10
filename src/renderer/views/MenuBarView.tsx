@@ -129,11 +129,11 @@ export default function MenuBarView({ currentUser, peers, timerState, statusReve
     const offShown = window.zenstate.on('popover:shown', () => {
       window.zenstate.todayGet().then((res) => {
         setTodayPlan(res?.plan ?? null);
-      }).catch(() => { });
+      }).catch((e: unknown) => console.warn('[MenuBarView] load failed:', e));
     });
     window.zenstate.todayGet().then((res) => {
       if (!eventArrived) setTodayPlan(res?.plan ?? null);
-    }).catch(() => { });
+    }).catch((e: unknown) => console.warn('[MenuBarView] load failed:', e));
     return () => { offChanged(); offShown(); };
   }, []);
 
@@ -158,7 +158,7 @@ export default function MenuBarView({ currentUser, peers, timerState, statusReve
     });
     window.zenstate.teamGetRecentPings().then((initial) => {
       setRecentPings((prev) => prev.length > 0 ? prev : initial);
-    }).catch(() => { });
+    }).catch((e: unknown) => console.warn('[MenuBarView] load failed:', e));
     return off;
   }, []);
 
@@ -166,7 +166,7 @@ export default function MenuBarView({ currentUser, peers, timerState, statusReve
   useEffect(() => {
     window.zenstate.bcGetAuthState().then((state: BasecampAuthState) => {
       setBcConnected(state.isConnected);
-    }).catch(() => { });
+    }).catch((e: unknown) => console.warn('[MenuBarView] load failed:', e));
     return window.zenstate.on(IPC.BC_AUTH_CHANGED, (...args: unknown[]) => {
       const state = args[0] as BasecampAuthState;
       setBcConnected(state.isConnected);

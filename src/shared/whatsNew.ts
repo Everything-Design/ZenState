@@ -20,6 +20,24 @@ export interface ReleaseHighlight {
 
 export const RELEASE_HIGHLIGHTS: ReleaseHighlight[] = [
   {
+    version: '5.6.0',
+    title: "What's new in v5.6.0",
+    intro: 'Foundation upgrade + daily progress ring + 4 sneaky bug fixes.',
+    bullets: [
+      "Daily hours target with a colour-coded progress ring on the dashboard. Set your target in Settings → Productivity (default 8h). Muted → blue → green when you hit the goal.",
+      "Faster dashboard: Team, Timesheet, and Settings tabs now lazy-load — opens the dashboard with only the Plan tab in the initial bundle.",
+      "Pings respect meeting mode now. If your timer is running and meeting mode is on, incoming heads-ups skip the full-screen alert + chime (still saved to the popover for catch-up later).",
+      "Stopwatch-add + meeting-toggle no longer creates ghost state. Four state-cancellation bugs the ECC click-path audit caught are fixed.",
+      "Errors that used to vanish now show or log. The 'Also log time for' picker now shows a retry button when members fail to load (instead of looking empty). Notifications mark-read rolls back if it fails.",
+      "Foundation: upgraded Electron 33 → 42 (9 majors of Chromium security patches). No code changes needed — clean upgrade. Bundles include 13 dependency security fixes from the npm audit cycle.",
+    ],
+    footer: 'Got feedback?',
+    footerLink: {
+      label: 'Drop it in Basecamp',
+      url: 'https://3.basecamp.com/5826042/buckets/38489884/cloud_files/9572235152',
+    },
+  },
+  {
     version: '5.5.0',
     title: "What's new in v5.5.0",
     intro: 'Configurable thresholds, faster dashboard, security hardening, heads-up alerts now appear on screen with a soft chime.',

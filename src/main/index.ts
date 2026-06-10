@@ -968,25 +968,31 @@ function handleIncomingPing(data: { senderId: string; senderName: string; messag
   };
   recentPings = [ping, ...recentPings].slice(0, RECENT_PINGS_MAX);
 
-  // v5.5.0 — Pings now open a full alert window (like meeting requests)
-  // instead of a quiet macOS notification banner. The alert plays a soft
-  // two-note chime on mount and centres on the screen, so the user can't
-  // miss a teammate's heads-up while in focus mode. The Notifications-
-  // panel-style ping list in the popover still receives the broadcast for
-  // catch-up after the fact.
-  try {
-    const alertWin = createAlertWindow(getRendererURL('alert.html'), {
-      width: 380,
-      height: 300,
-    });
-    bindAlertPayload(alertWin, {
-      type: 'pingReceived',
-      from: data.senderName,
-      senderId: data.senderId,
-      message: data.message,
-    });
-  } catch (err) {
-    console.warn('Failed to show ping alert window:', err);
+  // v5.5.1 (CLICK-PATH-001) — Meeting-mode gate. The v5.4.x ping-as-alert
+  // promotion shipped without consulting `meetingModeActive`, which is the
+  // same flag that suppresses the idle prompt (see startIdleDetection).
+  // Net effect: a user who explicitly toggled "I'm in a meeting" to silence
+  // interruptions still got a full-screen alert + audible chime when a
+  // teammate pinged them — exactly the opposite of what meeting mode
+  // promises. Skip the alert window when meeting mode is on AND a timer is
+  // running, but ALWAYS still broadcast to renderers so the popover's
+  // recent-pings list captures the message for after-the-fact catch-up.
+  const suppressAlert = meetingModeActive && timerIsRunning;
+  if (!suppressAlert) {
+    try {
+      const alertWin = createAlertWindow(getRendererURL('alert.html'), {
+        width: 380,
+        height: 300,
+      });
+      bindAlertPayload(alertWin, {
+        type: 'pingReceived',
+        from: data.senderName,
+        senderId: data.senderId,
+        message: data.message,
+      });
+    } catch (err) {
+      console.warn('Failed to show ping alert window:', err);
+    }
   }
 
   broadcastToWindows(IPC.TEAM_PING_RECEIVED, ping);
@@ -995,6 +1001,22 @@ function handleIncomingPing(data: { senderId: string; senderName: string; messag
 // ── Timer Logic ────────────────────────────────────────────────
 
 function startTimer(taskLabel: string, category?: string, targetDuration?: number, basecampLink?: { accountId: number; projectId: number; todoId: number; todoListId?: number; projectName?: string }) {
+  // v5.5.1 (CLICK-PATH-004) — Clear any stale timesheet-confirm state from a
+  // previous session that was stopped but never confirmed/discarded. Without
+  // this, `pendingTimesheetEntry` lingered through a fresh startTimer and a
+  // race with a still-open (or re-opened) confirm alert could post the OLD
+  // session's hours under the NEW timer's context. `stopTimer()` sets the
+  // pending entry; the user might dismiss the alert via the OS close button
+  // (no Post/Discard) — that path nulls the alert ref but not the pending
+  // entry. Belt-and-suspenders cleanup here covers that gap.
+  if (pendingTimesheetEntry) {
+    pendingTimesheetEntry = null;
+  }
+  if (timesheetConfirmAlertWin && !timesheetConfirmAlertWin.isDestroyed()) {
+    timesheetConfirmAlertWin.destroy();
+  }
+  timesheetConfirmAlertWin = null;
+
   timerTaskLabel = taskLabel;
   timerCategory = category;
   timerTargetDuration = targetDuration;
@@ -1566,8 +1588,16 @@ function setupIPC() {
       return;
     }
     if (payload.action === 'pause') {
+      // v5.6.0 (CLICK-PATH-003) — Only broadcast TIMER_AUTO_PAUSED if the
+      // timer was actually transitioning from running → paused. Without
+      // this guard, a user who manually paused before responding to the
+      // idle prompt would see a misleading "auto-paused due to idle" toast
+      // even though pauseTimer()'s internal guard made it a no-op.
+      const wasActuallyRunning = !timerIsPaused;
       pauseTimer();
-      broadcastToWindows(IPC.TIMER_AUTO_PAUSED, { reason: 'idle-confirmed' });
+      if (wasActuallyRunning) {
+        broadcastToWindows(IPC.TIMER_AUTO_PAUSED, { reason: 'idle-confirmed' });
+      }
       return;
     }
     if (payload.action === 'stop') {
@@ -1904,7 +1934,17 @@ function setupIPC() {
       idlePromptAlertWin.destroy();
     }
     idlePromptAlertWin = null;
-    meetingModeActive = false;
+    // v5.6.0 (CLICK-PATH-002) — Broadcast the meeting-mode reset so
+    // renderer caches don't stay stale across sign-out → sign-in cycles.
+    // Without the broadcast, the pill's React useState `meetingMode` flag
+    // remained true from the previous session even though the main
+    // process flipped it to false, causing the pill to render the "In
+    // meeting" pill on the next timer start until the user toggled the
+    // control. Mirror what stopTimer() already does.
+    if (meetingModeActive) {
+      meetingModeActive = false;
+      broadcastToWindows(IPC.TIMER_MEETING_MODE_CHANGED, false);
+    }
 
     // Stop background timers tied to user state.
     cancelStatusRevertTimer();

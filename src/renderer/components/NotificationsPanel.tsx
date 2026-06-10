@@ -197,8 +197,11 @@ export default function NotificationsPanel({ isBasecampConnected }: Props) {
 
   async function handleOpenNotification(n: BasecampNotification) {
     window.zenstate.openExternal(n.appUrl).catch(() => {});
-    window.zenstate.bcMarkNotificationRead(n.id).catch(() => {});
-    // Optimistically move from unreads to reads
+    // v5.6.0 (audit #2) — Optimistic move from unreads to reads, with
+    // rollback if the mark-read API call fails. Without the rollback, the
+    // optimistic update hid the unread locally but the next 5-min poll
+    // re-pulled it as unread from BC, creating a flickering badge loop
+    // with no user action able to dismiss it.
     setData((prev) => {
       if (!prev) return prev;
       const stillUnread = prev.unreads.filter((u) => u.id !== n.id);
@@ -207,6 +210,17 @@ export default function NotificationsPanel({ isBasecampConnected }: Props) {
         unreads: stillUnread,
         reads: alreadyInReads ? prev.reads : [n, ...prev.reads],
       };
+    });
+    window.zenstate.bcMarkNotificationRead(n.id).catch((err) => {
+      console.warn('[NotificationsPanel] mark-read failed, rolling back:', err);
+      setData((prev) => {
+        if (!prev) return prev;
+        const alreadyUnread = prev.unreads.some((u) => u.id === n.id);
+        return {
+          unreads: alreadyUnread ? prev.unreads : [n, ...prev.unreads],
+          reads: prev.reads.filter((r) => r.id !== n.id),
+        };
+      });
     });
   }
 

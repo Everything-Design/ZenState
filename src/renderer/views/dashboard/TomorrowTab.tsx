@@ -42,16 +42,16 @@ export default function TomorrowTab({ onOpenSettings }: Props) {
     // (2) any tomorrow:changed broadcast missed during a state we couldn't
     //     subscribe to (e.g. cross-window race on first mount).
     const onFocus = () => {
-      window.zenstate.tomorrowGet().then(setPlan).catch(() => {});
+      window.zenstate.tomorrowGet().then(setPlan).catch((e: unknown) => console.warn('[TomorrowTab] load failed:', e));
     };
     document.addEventListener('visibilitychange', onFocus);
     window.addEventListener('focus', onFocus);
 
     window.zenstate.tomorrowGet().then((res) => {
       if (!eventArrived) setPlan(res);
-    }).catch(() => {});
-    window.zenstate.recentsGet().then(setRecents).catch(() => {});
-    window.zenstate.bcGetAuthState().then(setAuthState).catch(() => {});
+    }).catch((e: unknown) => console.warn('[TomorrowTab] load failed:', e));
+    window.zenstate.recentsGet().then(setRecents).catch((e: unknown) => console.warn('[TomorrowTab] load failed:', e));
+    window.zenstate.bcGetAuthState().then(setAuthState).catch((e: unknown) => console.warn('[TomorrowTab] load failed:', e));
     return () => {
       offChanged();
       document.removeEventListener('visibilitychange', onFocus);

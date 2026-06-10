@@ -1,10 +1,24 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, Suspense, lazy } from 'react';
 import { Users, ClipboardList, Settings, MessageCircle, CalendarDays } from 'lucide-react';
 import { User, AvailabilityStatus, DailyRecord, LicenseState } from '../../shared/types';
-import TeamTab from './dashboard/TeamTab';
-import TimesheetTab from './dashboard/TimesheetTab';
-import SettingsTab from './dashboard/SettingsTab';
 import PlanTab from './dashboard/PlanTab';
+
+// v5.6.0 — Lazy-load secondary tabs so the dashboard's initial bundle ships
+// only the Plan view (the default + most-used surface). Team, Timesheet,
+// and Settings each become their own chunk that's fetched on first tab
+// click. Reduces the initial JS payload by roughly half on first paint.
+const TeamTab = lazy(() => import('./dashboard/TeamTab'));
+const TimesheetTab = lazy(() => import('./dashboard/TimesheetTab'));
+const SettingsTab = lazy(() => import('./dashboard/SettingsTab'));
+
+// Lightweight fallback while a tab chunk loads. Centred, low-noise.
+function TabLoading() {
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '64px 0', color: 'var(--zen-tertiary-text)', fontSize: 13 }}>
+      Loading…
+    </div>
+  );
+}
 
 interface TimerState {
   elapsed: number;
@@ -322,25 +336,31 @@ export default function DashboardView({ currentUser, peers, timerState, records,
           />
         )}
         {activeTab === 'team' && (
-          <TeamTab currentUser={currentUser} peers={peers} />
+          <Suspense fallback={<TabLoading />}>
+            <TeamTab currentUser={currentUser} peers={peers} />
+          </Suspense>
         )}
         {activeTab === 'timesheet' && (
-          <TimesheetTab
-            records={records}
-            isPro={isPro}
-            onRefreshRecords={onRefreshRecords}
-          />
+          <Suspense fallback={<TabLoading />}>
+            <TimesheetTab
+              records={records}
+              isPro={isPro}
+              onRefreshRecords={onRefreshRecords}
+            />
+          </Suspense>
         )}
         {activeTab === 'settings' && (
-          <SettingsTab
-            currentUser={currentUser}
-            peers={peers}
-            isPro={isPro}
-            licenseState={licenseState}
-            onLicenseStateChange={onLicenseStateChange}
-            onUserUpdate={onUserUpdate}
-            onSignOut={onSignOut}
-          />
+          <Suspense fallback={<TabLoading />}>
+            <SettingsTab
+              currentUser={currentUser}
+              peers={peers}
+              isPro={isPro}
+              licenseState={licenseState}
+              onLicenseStateChange={onLicenseStateChange}
+              onUserUpdate={onUserUpdate}
+              onSignOut={onSignOut}
+            />
+          </Suspense>
         )}
       </div>
     </div>

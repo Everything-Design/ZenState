@@ -148,6 +148,10 @@ export interface AppSettings {
   // until they explicitly tune them in Settings.
   longRunGuardHours?: number;       // default 3 — "Still working?" prompt after N hours of one continuous timer
   checkInPromptHour?: number;       // default 9 (9am) — when the daily Basecamp check-in scheduler fires
+  // v5.6.0 — Daily hours target drives the progress-ring component shown
+  // on the dashboard Plan header and popover footer. Default 8 (a normal
+  // working day). User can change in Settings → General → Productivity.
+  dailyHoursTarget?: number;        // default 8
 }
 
 // ── Basecamp Types ─────────────────────────────────────────────

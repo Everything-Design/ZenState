@@ -531,18 +531,32 @@ function TimesheetConfirmPanel({ taskLabel, seconds, defaultHours, defaultNotes,
   const [pickerOpen, setPickerOpen] = useState(false);
   const [members, setMembers] = useState<BasecampMember[]>([]);
   const [membersLoading, setMembersLoading] = useState(false);
+  // v5.6.0 (audit #1) — Surface fetch errors so users notice when the
+  // "Also log for" picker is empty due to a 401/403/network drop instead
+  // of mistakenly assuming the project has no teammates. Without this,
+  // they'd silently post hours only for themselves and miss the rest of
+  // the team's billing.
+  const [membersError, setMembersError] = useState<string | null>(null);
+  const [membersFetchKey, setMembersFetchKey] = useState(0);
   const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
 
   // Fetch project members when the picker is first expanded.
   useEffect(() => {
     if (!pickerOpen || !projectId || members.length > 0) return;
     setMembersLoading(true);
+    setMembersError(null);
     (window.zenstate as unknown as { bcListProjectMembers: (id: number) => Promise<{ ok: boolean; data?: BasecampMember[]; error?: string }> })
       .bcListProjectMembers(projectId)
-      .then((res) => { if (res.ok && res.data) setMembers(res.data.filter((m) => !(m as unknown as { client?: boolean }).client)); })
-      .catch(() => {})
+      .then((res) => {
+        if (res.ok && res.data) {
+          setMembers(res.data.filter((m) => !(m as unknown as { client?: boolean }).client));
+        } else if (!res.ok) {
+          setMembersError(res.error ?? 'Could not load members');
+        }
+      })
+      .catch((e: Error) => setMembersError(e.message ?? 'Could not load members'))
       .finally(() => setMembersLoading(false));
-  }, [pickerOpen, projectId, members.length]);
+  }, [pickerOpen, projectId, members.length, membersFetchKey]);
 
   // Convert the user's h+m back to the decimal hours Basecamp expects.
   // Two decimal places matches the precision of the original `defaultHours`
@@ -750,7 +764,21 @@ function TimesheetConfirmPanel({ taskLabel, seconds, defaultHours, defaultNotes,
                   Loading teammates…
                 </div>
               )}
-              {!membersLoading && members.length === 0 && (
+              {/* v5.6.0 (audit #1) — Error state replaces the misleading
+                  "No teammates found" message when the fetch actually failed. */}
+              {!membersLoading && membersError && (
+                <div style={{ padding: '14px', fontSize: 12, color: 'var(--status-occupied)', textAlign: 'center' }}>
+                  Could not load members: {membersError}
+                  <br />
+                  <button
+                    onClick={() => { setMembers([]); setMembersError(null); setMembersFetchKey((k) => k + 1); }}
+                    style={{ marginTop: 8, background: 'transparent', border: '1px solid var(--zen-divider)', borderRadius: 6, padding: '4px 10px', color: 'var(--zen-secondary-text)', fontSize: 11, cursor: 'pointer' }}
+                  >
+                    Retry
+                  </button>
+                </div>
+              )}
+              {!membersLoading && !membersError && members.length === 0 && (
                 <div style={{ padding: '14px', fontSize: 12, color: 'var(--zen-tertiary-text)', textAlign: 'center' }}>
                   No teammates found on this project.
                 </div>
