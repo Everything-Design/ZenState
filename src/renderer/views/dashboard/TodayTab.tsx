@@ -410,23 +410,39 @@ export default function TodayTab({ timerState, records, onOpenSettings, onRefres
             What you did today
           </SectionTitle>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-1)' }}>
-            {todaySessions.map((s) => (
-              <div key={s.id} style={{
-                display: 'flex', alignItems: 'center', gap: 'var(--space-3)',
-                padding: '10px var(--space-3)', borderRadius: 'var(--radius-md)',
-                background: 'var(--zen-tertiary-bg)',
-              }}>
-                <div style={{ width: 14, height: 14, borderRadius: '50%', background: 'var(--status-available)', opacity: 0.8, flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                  <Check size={9} color="white" />
+            {todaySessions.map((s) => {
+              // Look up the project name from the currently-pinned plan. Works
+              // for any session on a still-pinned to-do (the common case for
+              // "What you did today"). Sessions on un-pinned to-dos show no
+              // project line — graceful omission.
+              const projectName = s.basecamp?.todoId
+                ? plan.items.find((p) => p.todoId === s.basecamp!.todoId)?.projectName
+                : undefined;
+              return (
+                <div key={s.id} style={{
+                  display: 'flex', alignItems: 'center', gap: 'var(--space-3)',
+                  padding: '10px var(--space-3)', borderRadius: 'var(--radius-md)',
+                  background: 'var(--zen-tertiary-bg)',
+                }}>
+                  <div style={{ width: 14, height: 14, borderRadius: '50%', background: 'var(--status-available)', opacity: 0.8, flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                    <Check size={9} color="white" />
+                  </div>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ fontSize: 'var(--text-base)', color: 'var(--zen-text)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                      {s.taskLabel}
+                    </div>
+                    {projectName && (
+                      <div style={{ fontSize: 'var(--text-xs)', color: 'var(--zen-tertiary-text)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', marginTop: 2 }}>
+                        {projectName}
+                      </div>
+                    )}
+                  </div>
+                  <span style={{ fontFamily: 'var(--font-mono)', fontSize: 'var(--text-sm)', color: 'var(--zen-secondary-text)', fontVariantNumeric: 'tabular-nums' }}>
+                    {formatHM(s.duration)}
+                  </span>
                 </div>
-                <span style={{ flex: 1, fontSize: 'var(--text-base)', color: 'var(--zen-text)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                  {s.taskLabel}
-                </span>
-                <span style={{ fontFamily: 'var(--font-mono)', fontSize: 'var(--text-sm)', color: 'var(--zen-secondary-text)', fontVariantNumeric: 'tabular-nums' }}>
-                  {formatHM(s.duration)}
-                </span>
-              </div>
-            ))}
+              );
+            })}
           </div>
         </section>
       )}

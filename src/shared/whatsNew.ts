@@ -20,6 +20,21 @@ export interface ReleaseHighlight {
 
 export const RELEASE_HIGHLIGHTS: ReleaseHighlight[] = [
   {
+    version: '5.6.3',
+    title: "What's new in v5.6.3",
+    intro: 'Project names now appear under each task in the Plan tab’s "What you did today" list and the Timesheet tab’s session rows — so you can tell at a glance which project a tracked entry belongs to.',
+    bullets: [
+      'Project name shown under the task name in "What you did today" (Plan tab).',
+      'Project name shown under the task name in "Today’s Sessions" and any selected-day detail view (Timesheet tab).',
+      'Works for any session on a still-pinned to-do. Sessions on un-pinned to-dos show no project line (gracefully omitted).',
+    ],
+    footer: 'Got feedback?',
+    footerLink: {
+      label: 'Drop it in Basecamp',
+      url: 'https://3.basecamp.com/5826042/buckets/38489884/cloud_files/9572235152',
+    },
+  },
+  {
     version: '5.6.2',
     title: "What's new in v5.6.2",
     intro: 'Timesheet entries land on the right day, the heads-up alert has a softer sound, and the daily-progress ring is back.',

@@ -1,6 +1,6 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { Pencil, Trash2, FileText, Download, Plus } from 'lucide-react';
-import { DailyRecord, DailySession } from '../../../shared/types';
+import { DailyRecord, DailySession, IPC, TodayPlan } from '../../../shared/types';
 import SessionEditModal from '../../components/SessionEditModal';
 import AddSessionModal from '../../components/AddSessionModal';
 import Toast, { useToast } from '../../components/Toast';
@@ -108,6 +108,28 @@ export default function TimesheetTab({ records, isPro, onRefreshRecords }: Props
   // v5.1.4 — Set of session IDs whose notes are expanded. Click the inline
   // note to expand/collapse the full text.
   const [expandedNotes, setExpandedNotes] = useState<Set<string>>(new Set());
+  // v5.6.3 — Today's pinned plan, used to look up the project name for each
+  // session row. Subscribe first, fetch second (same pattern as MenuBarView)
+  // so a TODAY_CHANGED event arriving mid-fetch can't be clobbered.
+  const [plan, setPlan] = useState<TodayPlan | null>(null);
+  useEffect(() => {
+    let eventArrived = false;
+    const off = window.zenstate.on(IPC.TODAY_CHANGED, (...args: unknown[]) => {
+      eventArrived = true;
+      setPlan(args[0] as TodayPlan);
+    });
+    window.zenstate.todayGet().then((res) => {
+      if (!eventArrived) setPlan(res?.plan ?? null);
+    }).catch((e: unknown) => console.warn('[TimesheetTab] todayGet failed:', e));
+    return off;
+  }, []);
+  const projectNameByTodoId = useMemo(() => {
+    const m = new Map<number, string>();
+    for (const p of plan?.items ?? []) {
+      if (p.projectName) m.set(p.todoId, p.projectName);
+    }
+    return m;
+  }, [plan?.items]);
   const toggleNoteExpansion = (sessionId: string) => {
     setExpandedNotes((prev) => {
       const next = new Set(prev);
@@ -438,6 +460,12 @@ export default function TimesheetTab({ records, isPro, onRefreshRecords }: Props
                     );
                   })()}
                 </div>
+                {/* v5.6.3 — Project name from the currently-pinned plan. */}
+                {session.basecamp?.todoId && projectNameByTodoId.get(session.basecamp.todoId) && (
+                  <div style={{ fontSize: 10, color: 'var(--zen-tertiary-text)', marginTop: 2, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                    {projectNameByTodoId.get(session.basecamp.todoId)}
+                  </div>
+                )}
                 <div style={{ fontSize: 10, color: 'var(--zen-tertiary-text)', marginTop: 2 }}>
                   {session.startTime ? new Date(session.startTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : ''}
                   {session.endTime ? ` — ${new Date(session.endTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}` : ''}
@@ -660,6 +688,12 @@ export default function TimesheetTab({ records, isPro, onRefreshRecords }: Props
                         );
                       })()}
                     </div>
+                    {/* v5.6.3 — Project name from the currently-pinned plan. */}
+                    {session.basecamp?.todoId && projectNameByTodoId.get(session.basecamp.todoId) && (
+                      <div style={{ fontSize: 10, color: 'var(--zen-tertiary-text)', marginTop: 2, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                        {projectNameByTodoId.get(session.basecamp.todoId)}
+                      </div>
+                    )}
                     <div style={{ fontSize: 10, color: 'var(--zen-tertiary-text)', marginTop: 2 }}>
                       {session.startTime ? new Date(session.startTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : ''}
                     </div>
