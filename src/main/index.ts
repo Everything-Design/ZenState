@@ -2175,7 +2175,13 @@ function setupIPC() {
   ipcMain.handle(IPC.GROUPS_SAVE, (_e, group: Parameters<typeof persistence.savePeerGroup>[0]) => persistence.savePeerGroup(group));
   ipcMain.handle(IPC.GROUPS_DELETE, (_e, groupId: string) => persistence.deletePeerGroup(groupId));
 
-  // Avatar photo picker (crops to center square, then resizes to 128x128)
+  // Avatar photo picker (crops to center square, then resizes to 128x128 for
+  // static images). v5.7.1 — GIFs go through a separate path that preserves
+  // animation: we skip nativeImage (which only decodes the first frame) and
+  // base64 the original bytes after a 500KB size check. Square crop is given
+  // up for GIFs — display sites use object-fit: cover. Larger files are
+  // rejected because LAN bonjour broadcast multiplies the cost.
+  const GIF_MAX_BYTES = 500 * 1024;
   ipcMain.handle('dialog:pick-avatar-image', async () => {
     const result = await dialog.showOpenDialog({
       properties: ['openFile'],
@@ -2184,9 +2190,21 @@ function setupIPC() {
     if (result.canceled || result.filePaths.length === 0) return null;
     const filePath = result.filePaths[0];
     const fileData = fs.readFileSync(filePath);
+    // Sniff for GIF magic bytes (handles both GIF87a and GIF89a) — extension
+    // alone isn't trustworthy. WebP animated would need a similar path but
+    // we don't ship anim-WebP for now (rare in practice).
+    const isGif = fileData.length >= 6
+      && fileData[0] === 0x47 && fileData[1] === 0x49 && fileData[2] === 0x46
+      && fileData[3] === 0x38 && (fileData[4] === 0x37 || fileData[4] === 0x39)
+      && fileData[5] === 0x61;
+    if (isGif) {
+      if (fileData.length > GIF_MAX_BYTES) {
+        return { error: `GIF is ${Math.round(fileData.length / 1024)}KB — please use one under ${GIF_MAX_BYTES / 1024}KB so it doesn't spam the LAN.` };
+      }
+      return { data: fileData.toString('base64'), mime: 'image/gif' };
+    }
     const img = nativeImage.createFromBuffer(fileData);
     const { width, height } = img.getSize();
-    // Crop to center square
     let cropped = img;
     if (width !== height) {
       const side = Math.min(width, height);
@@ -2195,7 +2213,7 @@ function setupIPC() {
       cropped = img.crop({ x, y, width: side, height: side });
     }
     const resized = cropped.resize({ width: 128, height: 128 });
-    return resized.toPNG().toString('base64');
+    return { data: resized.toPNG().toString('base64'), mime: 'image/png' };
   });
 
   // Network: manual IP connection. Only accepts private/loopback addresses

@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useState, useCallback } from 'react';
 import { X, Plus, Check, Users, Trash2, Edit2 } from 'lucide-react';
 import { User, AvailabilityStatus, PeerGroup } from '../../shared/types';
+import Avatar from './Avatar';
 
 interface Props {
   peers: User[];
@@ -376,7 +377,7 @@ function PeerAvatar({ peer, size }: { peer: User; size: number }) {
       overflow: 'hidden',
     }}>
       {peer.avatarImageData ? (
-        <img src={`data:image/png;base64,${peer.avatarImageData}`} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+        <Avatar data={peer.avatarImageData} mime={peer.avatarImageMime} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
       ) : peer.avatarEmoji ? (
         <span style={{ fontSize: Math.round(size * 0.6) }}>{peer.avatarEmoji}</span>
       ) : (

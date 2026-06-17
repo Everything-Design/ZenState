@@ -21,6 +21,10 @@ export interface User {
   avatarEmoji?: string;
   avatarColor?: string;
   avatarImageData?: string; // base64
+  // v5.7.1 — MIME type for the avatar image. Defaults to image/png for any
+  // older avatar that pre-dates this field; image/gif means the original
+  // animated bytes were preserved (skipped the nativeImage flatten path).
+  avatarImageMime?: string;
   isAdmin: boolean;
   canSendEmergency: boolean;
   currentFocusSession?: FocusSession;
@@ -129,6 +133,11 @@ export interface AppSettings {
   // When true, the floating pill fades to ~50% opacity after a few seconds
   // of no hover, so it stays out of the way without going invisible.
   miniTimerAutoDim: boolean;
+  // v5.7.1 — Whether GIF avatars from teammates should animate, or render as
+  // a frozen first frame. Default OFF to preserve the calm visual baseline;
+  // the user opts in if they want to see other people's animated GIFs play.
+  // Has no effect on PNG/JPG avatars or on the user's own avatar.
+  animateAvatars?: boolean;
   // v5.1.4 — App version of the last "What's new" dialog the user saw. On
   // launch the dashboard compares this with the current app.getVersion();
   // if different (or missing), the modal pops once with that version's

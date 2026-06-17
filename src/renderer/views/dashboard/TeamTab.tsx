@@ -2,6 +2,7 @@ import React, { useState, useMemo, useEffect } from 'react';
 import { Megaphone, X } from 'lucide-react';
 import { User, AvailabilityStatus, IPC, ReceivedPing } from '../../../shared/types';
 import SendPingSheet from '../../components/SendPingSheet';
+import Avatar from '../../components/Avatar';
 
 interface Props {
   currentUser: User;
@@ -207,7 +208,7 @@ export default function TeamTab({ currentUser, peers }: Props) {
                   overflow: 'hidden',
                 }}>
                   {sender?.avatarImageData ? (
-                    <img src={`data:image/png;base64,${sender.avatarImageData}`} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                    <Avatar data={sender.avatarImageData} mime={sender.avatarImageMime} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
                   ) : sender?.avatarEmoji ? (
                     <span style={{ fontSize: 14 }}>{sender.avatarEmoji}</span>
                   ) : (
@@ -295,7 +296,7 @@ export default function TeamTab({ currentUser, peers }: Props) {
                     border: `2.5px solid ${getStatusColor(peer.status)}`,
                   }} />
                   {peer.avatarImageData ? (
-                    <img src={`data:image/png;base64,${peer.avatarImageData}`} style={{ width: '100%', height: '100%', borderRadius: '50%', objectFit: 'cover' }} />
+                    <Avatar data={peer.avatarImageData} mime={peer.avatarImageMime} style={{ width: '100%', height: '100%', borderRadius: '50%', objectFit: 'cover' }} />
                   ) : peer.avatarEmoji ? (
                     peer.avatarEmoji
                   ) : (

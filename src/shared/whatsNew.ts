@@ -20,6 +20,23 @@ export interface ReleaseHighlight {
 
 export const RELEASE_HIGHLIGHTS: ReleaseHighlight[] = [
   {
+    version: '5.7.1',
+    title: "What's new in v5.7.1",
+    intro: "Animated GIF avatars (if you want them). Pick a GIF in Settings → Avatar and it stays animated for anyone who's opted in to motion. Everyone else sees a still first frame — the calm default stays calm.",
+    bullets: [
+      'GIF avatars now keep their animation through the LAN (previously Electron flattened them to a static PNG silently).',
+      'Settings → General → "🎞️ Animate teammates\' GIF avatars" toggle controls whether you see them play. Off by default; flip it on for the fun.',
+      'Capped at 500KB to keep the LAN broadcast reasonable. Larger GIFs get a friendly nudge.',
+      'Square crop is skipped for GIFs (we don\'t bundle a re-encoder) — non-square sources render with object-fit: cover.',
+      'Your own avatar always animates for you, regardless of the setting.',
+    ],
+    footer: 'Got feedback?',
+    footerLink: {
+      label: 'Drop it in Basecamp',
+      url: 'https://3.basecamp.com/5826042/buckets/38489884/cloud_files/9572235152',
+    },
+  },
+  {
     version: '5.7.0',
     title: "What's new in v5.7.0",
     intro: "Folders + drag-to-reorder. Organise your pinned to-dos by project (automatic) or with your own custom folders, and rearrange them by dragging — on both the dashboard and the popover.",

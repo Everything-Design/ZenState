@@ -3,6 +3,7 @@ import { Settings, Timer, LayoutDashboard, MessageCircle, Hourglass, Pin, Play, 
 import { User, AvailabilityStatus, IPC, LicenseState, TodayPlan, PinnedTodo, ReceivedPing, BasecampAuthState } from '../../shared/types';
 import SendPingSheet from '../components/SendPingSheet';
 import NotificationsPanel from '../components/NotificationsPanel';
+import Avatar from '../components/Avatar';
 // v5.7.0 — DnD reorder in the popover too (matches Plan tab). Same single-flat
 // SortableContext pattern: folder header IDs interleaved with item IDs.
 import {
@@ -475,7 +476,7 @@ export default function MenuBarView({ currentUser, peers, timerState, statusReve
         <div className="avatar" style={{ background: currentUser.avatarColor || '#007AFF' }}>
           <div className={`status-ring ${currentUser.status}`} />
           {currentUser.avatarImageData ? (
-            <img src={`data:image/png;base64,${currentUser.avatarImageData}`} style={{ width: '100%', height: '100%', borderRadius: '50%', objectFit: 'cover' }} />
+            <Avatar data={currentUser.avatarImageData} mime={currentUser.avatarImageMime} isSelf style={{ width: '100%', height: '100%', borderRadius: '50%', objectFit: 'cover' }} />
           ) : currentUser.avatarEmoji ? (
             <span>{currentUser.avatarEmoji}</span>
           ) : (
@@ -910,7 +911,7 @@ export default function MenuBarView({ currentUser, peers, timerState, statusReve
                   <div className="team-member-row">
                     <div className="member-avatar" style={{ background: peer.avatarColor || '#8E8E93' }}>
                       {peer.avatarImageData ? (
-                        <img src={`data:image/png;base64,${peer.avatarImageData}`} style={{ width: '100%', height: '100%', borderRadius: '50%', objectFit: 'cover' }} />
+                        <Avatar data={peer.avatarImageData} mime={peer.avatarImageMime} style={{ width: '100%', height: '100%', borderRadius: '50%', objectFit: 'cover' }} />
                       ) : peer.avatarEmoji ? (
                         peer.avatarEmoji
                       ) : (

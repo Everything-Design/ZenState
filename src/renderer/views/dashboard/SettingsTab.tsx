@@ -5,6 +5,7 @@ import { ProBadge, ProGate } from '../../components/ProGate';
 import LicenseActivationModal from '../../components/LicenseActivationModal';
 import NetworkTab from './NetworkTab';
 import Toast, { useToast } from '../../components/Toast';
+import Avatar from '../../components/Avatar';
 
 // Avatar colors — no green/orange/red (reserved for status indicators)
 const COLOR_OPTIONS = ['#007AFF', '#5856D6', '#AF52DE', '#FF2D55', '#00C7BE', '#5AC8FA', '#BF5AF2', '#A2845E'];
@@ -278,20 +279,27 @@ export default function SettingsTab({ currentUser, peers, isPro, licenseState, o
   }
 
   async function handlePickPhoto() {
-    const base64 = await (window as any).zenstate.pickAvatarImage();
-    if (base64) {
-      onUserUpdate({ avatarImageData: base64, avatarEmoji: undefined });
-      setAvatarMode('photo');
+    // v5.7.1 — Picker now returns { data, mime } | { error } | null.
+    const result = await (window as any).zenstate.pickAvatarImage() as
+      | { data: string; mime: string }
+      | { error: string }
+      | null;
+    if (!result) return;
+    if ('error' in result) {
+      addToast('error', result.error);
+      return;
     }
+    onUserUpdate({ avatarImageData: result.data, avatarImageMime: result.mime, avatarEmoji: undefined });
+    setAvatarMode('photo');
   }
 
   function handleUseInitial() {
-    onUserUpdate({ avatarImageData: undefined, avatarEmoji: undefined });
+    onUserUpdate({ avatarImageData: undefined, avatarImageMime: undefined, avatarEmoji: undefined });
     setAvatarMode('initial');
   }
 
   function handleEmojiSelect(emoji: string) {
-    onUserUpdate({ avatarEmoji: emoji, avatarImageData: undefined });
+    onUserUpdate({ avatarEmoji: emoji, avatarImageData: undefined, avatarImageMime: undefined });
     setAvatarMode('emoji');
   }
 
@@ -331,7 +339,7 @@ export default function SettingsTab({ currentUser, peers, isPro, licenseState, o
         overflow: 'hidden',
       }}>
         {currentUser.avatarImageData ? (
-          <img src={`data:image/png;base64,${currentUser.avatarImageData}`} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+          <Avatar data={currentUser.avatarImageData} mime={currentUser.avatarImageMime} isSelf style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
         ) : currentUser.avatarEmoji ? (
           currentUser.avatarEmoji
         ) : (
@@ -804,6 +812,30 @@ export default function SettingsTab({ currentUser, peers, isPro, licenseState, o
               </div>
             </>
           )}
+
+          {/* v5.7.1 — Animate avatars from teammates */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
+            <span style={{ fontSize: 13, flex: 1 }}>🎞️ Animate teammates&rsquo; GIF avatars</span>
+            <button
+              onClick={() => updateAppSettings({ animateAvatars: !appSettings.animateAvatars })}
+              style={{
+                width: 44, height: 24, borderRadius: 12, border: 'none',
+                background: appSettings.animateAvatars ? 'var(--zen-primary)' : 'var(--zen-secondary-bg)',
+                cursor: 'pointer', position: 'relative', transition: 'background 0.2s ease',
+              }}
+            >
+              <div style={{
+                width: 20, height: 20, borderRadius: '50%', background: 'white',
+                position: 'absolute', top: 2,
+                left: appSettings.animateAvatars ? 22 : 2,
+                transition: 'left 0.2s ease',
+                boxShadow: '0 1px 3px rgba(0,0,0,0.3)',
+              }} />
+            </button>
+          </div>
+          <div style={{ fontSize: 10, color: 'var(--zen-tertiary-text)', marginBottom: 12 }}>
+            Off by default — teammates&rsquo; animated GIF avatars show as a static first frame for a calm baseline. Turn on if you want the motion. Doesn&rsquo;t affect static photos or your own avatar.
+          </div>
 
           {/* Pre-flight Basecamp confirmation */}
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
@@ -1296,7 +1328,7 @@ export default function SettingsTab({ currentUser, peers, isPro, licenseState, o
                     overflow: 'hidden',
                   }}>
                     {peer.avatarImageData ? (
-                      <img src={`data:image/png;base64,${peer.avatarImageData}`} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                      <Avatar data={peer.avatarImageData} mime={peer.avatarImageMime} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
                     ) : peer.avatarEmoji ? (
                       peer.avatarEmoji
                     ) : (

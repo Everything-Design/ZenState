@@ -1,6 +1,7 @@
 import React, { useState, useEffect, Suspense, lazy } from 'react';
 import { Users, ClipboardList, Settings, MessageCircle, CalendarDays } from 'lucide-react';
 import { User, AvailabilityStatus, DailyRecord, LicenseState } from '../../shared/types';
+import Avatar from '../components/Avatar';
 import PlanTab from './dashboard/PlanTab';
 
 // v5.6.0 — Lazy-load secondary tabs so the dashboard's initial bundle ships
@@ -133,7 +134,7 @@ export default function DashboardView({ currentUser, peers, timerState, records,
           }}>
             <div className={`status-ring ${currentUser.status}`} />
             {currentUser.avatarImageData ? (
-              <img src={`data:image/png;base64,${currentUser.avatarImageData}`} style={{ width: '100%', height: '100%', borderRadius: '50%', objectFit: 'cover' }} />
+              <Avatar data={currentUser.avatarImageData} mime={currentUser.avatarImageMime} isSelf style={{ width: '100%', height: '100%', borderRadius: '50%', objectFit: 'cover' }} />
             ) : currentUser.avatarEmoji ? (
               <span>{currentUser.avatarEmoji}</span>
             ) : (
