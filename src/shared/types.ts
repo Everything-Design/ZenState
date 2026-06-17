@@ -223,6 +223,19 @@ export interface PinnedTodo {
   // today." Time tracking still goes to the parent todo. Reset at midnight
   // rollover along with completedAt. Keyed by subtask id → ISO timestamp.
   subtaskCompletions?: Record<number, string>;
+  // v5.7.0 — Optional user-folder assignment. When set, the item lives in the
+  // matching `TodayPlan.userFolders` entry. When unset, it falls back to its
+  // auto-folder (derived as `project-${projectId}`). Survives midnight rollover.
+  folderId?: string;
+}
+
+// v5.7.0 — A user-created folder for organizing pinned to-dos beyond the
+// default project-based auto-grouping. Auto-folders (one per Basecamp project)
+// are derived at render time from `projectId` and NOT stored here.
+export interface TodayUserFolder {
+  id: string;          // UUID, stable across rollover
+  name: string;        // user-typed; trimmed, max 60 chars
+  createdAt: string;   // ISO timestamp
 }
 
 // v5.3 — Lightweight subtask shape. We only need id + content + completed
@@ -238,6 +251,15 @@ export interface BasecampSubtask {
 export interface TodayPlan {
   date: string;           // YYYY-MM-DD — used to auto-reset at the next day
   items: PinnedTodo[];
+  // v5.7.0 — Folder organization. All four fields are optional so a plan
+  // serialised by an older version still loads cleanly (additive migration).
+  userFolders?: TodayUserFolder[];
+  // Top-level ordering: array of folder IDs. User-folder IDs are UUIDs;
+  // auto-folder IDs are `project-${projectId}`. Auto-folders missing from
+  // this list render alphabetically by project name after the listed folders.
+  folderOrder?: string[];
+  // Per-folder collapsed state. Persists across rollover. Keyed by folder ID.
+  collapsedFolders?: Record<string, boolean>;
 }
 
 // Track recently-used Basecamp todos so the popover can offer one-tap restart
@@ -589,6 +611,16 @@ export const IPC = {
   // v5.3 — Toggle the local check state for a subtask under a pinned todo.
   // Purely local — Basecamp is not touched. Resets at midnight rollover.
   TODAY_TOGGLE_SUBTASK: 'today:toggle-subtask',
+  // v5.7.0 — Folder organization (auto-grouped by project + user-created).
+  TODAY_FOLDER_CREATE: 'today:folder-create',
+  TODAY_FOLDER_RENAME: 'today:folder-rename',
+  TODAY_FOLDER_DELETE: 'today:folder-delete',
+  TODAY_FOLDER_REORDER: 'today:folder-reorder',
+  TODAY_FOLDER_TOGGLE_COLLAPSE: 'today:folder-toggle-collapse',
+  // Move (or reorder) a pinned item: optionally change its folder AND set
+  // its position within the destination folder. Subsumes TODAY_REORDER for
+  // anything that knows about folders.
+  TODAY_ITEM_MOVE: 'today:item-move',
   TODAY_CHANGED: 'today:changed', // main → renderer
   RECENTS_GET: 'recents:get',
 

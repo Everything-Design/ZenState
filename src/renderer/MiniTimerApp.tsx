@@ -177,10 +177,21 @@ export default function MiniTimerApp() {
         timer.basecampTodoId != null ? p.todoId === timer.basecampTodoId : p.content === timer.taskLabel
       );
       const projectBannerH = hasProjectBanner ? 24 : 0;
+      // v5.7.0 — Folder headers add ~22px each when more than one group is
+      // visible. Count distinct folder IDs among switchable items.
+      const switchableItems = (plan?.items ?? []).filter(
+        (p) => p.content !== timer.taskLabel && !p.completedAt
+      );
+      const folderIds = new Set<string>();
+      for (const it of switchableItems) {
+        const uf = it.folderId ? (plan?.userFolders ?? []).find((f) => f.id === it.folderId) : undefined;
+        folderIds.add(uf ? uf.id : `project-${it.projectId}`);
+      }
+      const folderHeadersH = folderIds.size > 1 ? folderIds.size * 22 : 0;
       // Item rows + "Today" heading (~24px) + bottom button (~32px).
       // Search bar (~34px) is only rendered when switchableCount > 0.
       const switcherHeight = switchableCount > 0
-        ? 24 + 50 * switchableCount + 16 + 34 + 32
+        ? 24 + 50 * switchableCount + folderHeadersH + 16 + 34 + 32
         : 56 + 32;
       const height = Math.min(540, COMPACT_H + projectBannerH + NOTES_SECTION_H + switcherHeight);
       window.zenstate.miniTimerResize({ width: EXPANDED_W, height });
@@ -556,16 +567,55 @@ export default function MiniTimerApp() {
                 <div style={{ padding: '14px 12px', fontSize: 10, color: 'rgba(230,237,243,0.45)', textAlign: 'center' }}>
                   No tasks match "{taskSearchText}"
                 </div>
-              ) : (
-                filteredSwitchablePinned.map((p) => (
-                  <SwitchRow
-                    key={`p-${p.todoId}`}
-                    title={p.content}
-                    subtitle={p.projectName}
-                    onClick={() => switchToPinned(p)}
-                  />
-                ))
-              )}
+              ) : (() => {
+                // v5.7.0 — Group switchable items by folder (user folder or
+                // project auto-folder). Header is hidden when there's only one
+                // group. When grouped, hide per-row project subtitle to avoid
+                // visual duplication.
+                const groups = new Map<string, { id: string; name: string; items: typeof filteredSwitchablePinned }>();
+                for (const it of filteredSwitchablePinned) {
+                  const uf = it.folderId ? (plan?.userFolders ?? []).find((f) => f.id === it.folderId) : undefined;
+                  const fid = uf ? uf.id : `project-${it.projectId}`;
+                  const name = uf?.name ?? it.projectName ?? 'Untitled project';
+                  if (!groups.has(fid)) groups.set(fid, { id: fid, name, items: [] });
+                  groups.get(fid)!.items.push(it);
+                }
+                const seen = new Set<string>();
+                const ordered: { id: string; name: string; items: typeof filteredSwitchablePinned }[] = [];
+                for (const fid of plan?.folderOrder ?? []) {
+                  const g = groups.get(fid);
+                  if (g && !seen.has(fid)) { ordered.push(g); seen.add(fid); }
+                }
+                for (const uf of plan?.userFolders ?? []) {
+                  if (!seen.has(uf.id)) {
+                    const g = groups.get(uf.id);
+                    if (g) { ordered.push(g); seen.add(uf.id); }
+                  }
+                }
+                ordered.push(...[...groups.values()].filter((g) => !seen.has(g.id)).sort((a, b) => a.name.localeCompare(b.name)));
+                const showHeaders = ordered.length > 1;
+                return ordered.flatMap((group) => [
+                  showHeaders && (
+                    <div key={`h-${group.id}`} style={{
+                      padding: '8px 12px 2px',
+                      fontSize: 9,
+                      fontWeight: 700,
+                      letterSpacing: 0.6,
+                      textTransform: 'uppercase',
+                      color: 'rgba(230,237,243,0.4)',
+                      overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                    }}>{group.name}</div>
+                  ),
+                  ...group.items.map((p) => (
+                    <SwitchRow
+                      key={`p-${p.todoId}`}
+                      title={p.content}
+                      subtitle={showHeaders ? undefined : p.projectName}
+                      onClick={() => switchToPinned(p)}
+                    />
+                  )),
+                ]);
+              })()}
             </>
           )}
 

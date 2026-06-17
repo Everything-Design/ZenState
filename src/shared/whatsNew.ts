@@ -20,6 +20,23 @@ export interface ReleaseHighlight {
 
 export const RELEASE_HIGHLIGHTS: ReleaseHighlight[] = [
   {
+    version: '5.7.0',
+    title: "What's new in v5.7.0",
+    intro: "Folders + drag-to-reorder. Organise your pinned to-dos by project (automatic) or with your own custom folders, and rearrange them by dragging — on both the dashboard and the popover.",
+    bullets: [
+      'Pinned to-dos are now grouped by Basecamp project automatically. Each group has a collapsible header — click to fold up the ones you’re not focused on right now.',
+      'Create your own folders too (e.g. "This week", "Standing items"). Hit "+ New folder" at the bottom of the Plan tab and drag items in.',
+      'Drag tasks to reorder within a folder, drag them between folders, or drag the folder headers themselves to change the section order. Works on Plan tab and the popover.',
+      'Pill switcher reflects the new order — read-only, no drag handles there.',
+      'Restart-to-update is fixed (regression from the Electron 33→42 upgrade in v5.6.0). After you’re on v5.7.0, every future update will restart cleanly.',
+    ],
+    footer: 'Got feedback?',
+    footerLink: {
+      label: 'Drop it in Basecamp',
+      url: 'https://3.basecamp.com/5826042/buckets/38489884/cloud_files/9572235152',
+    },
+  },
+  {
     version: '5.6.3',
     title: "What's new in v5.6.3",
     intro: 'Project names now appear under each task in the Plan tab’s "What you did today" list and the Timesheet tab’s session rows — so you can tell at a glance which project a tracked entry belongs to.',

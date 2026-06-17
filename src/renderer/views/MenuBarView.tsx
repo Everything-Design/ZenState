@@ -1,8 +1,22 @@
-import React, { useState, useMemo, useEffect } from 'react';
-import { Settings, Timer, LayoutDashboard, MessageCircle, Hourglass, Pin, Play, Megaphone, X } from 'lucide-react';
+import React, { useState, useMemo, useEffect, useCallback } from 'react';
+import { Settings, Timer, LayoutDashboard, MessageCircle, Hourglass, Pin, Play, Megaphone, X, ChevronDown, ChevronRight } from 'lucide-react';
 import { User, AvailabilityStatus, IPC, LicenseState, TodayPlan, PinnedTodo, ReceivedPing, BasecampAuthState } from '../../shared/types';
 import SendPingSheet from '../components/SendPingSheet';
 import NotificationsPanel from '../components/NotificationsPanel';
+// v5.7.0 — DnD reorder in the popover too (matches Plan tab). Same single-flat
+// SortableContext pattern: folder header IDs interleaved with item IDs.
+import {
+  DndContext, DragEndEvent, PointerSensor, useSensor, useSensors, closestCenter,
+} from '@dnd-kit/core';
+import {
+  SortableContext, useSortable, verticalListSortingStrategy, arrayMove,
+} from '@dnd-kit/sortable';
+import { CSS } from '@dnd-kit/utilities';
+
+const popItemSortableId = (todoId: number) => `item-${todoId}`;
+const parsePopItemSortableId = (id: string): number | null =>
+  id.startsWith('item-') ? Number(id.slice(5)) : null;
+const isPopFolderSortableId = (id: string) => !id.startsWith('item-');
 
 const STATUS_SUGGESTIONS = ['In a meeting', 'Lunch break', 'Be right back', 'Deep work'];
 const DURATION_OPTIONS = [
@@ -226,6 +240,112 @@ export default function MenuBarView({ currentUser, peers, timerState, statusReve
   }, [onlinePeers, searchText]);
 
   const isTimerActive = timerState.isRunning || timerState.isPaused;
+
+  // v5.7.0 — Hoisted popover grouping logic. Same shape as TodayTab's
+  // folderGroups; the previous in-JSX IIFE recomputed this each render and
+  // hid the sortable IDs from the DndContext / SortableContext wrappers.
+  const popoverGroups = useMemo(() => {
+    if (!todayPlan) return [] as { id: string; name: string; isUser: boolean; items: PinnedTodo[] }[];
+    const sorted = [...todayPlan.items].sort((a, b) => Number(!!a.completedAt) - Number(!!b.completedAt));
+    const groups = new Map<string, { id: string; name: string; isUser: boolean; items: typeof sorted }>();
+    for (const it of sorted) {
+      const uf = it.folderId ? (todayPlan.userFolders ?? []).find((f) => f.id === it.folderId) : undefined;
+      const fid = uf ? uf.id : `project-${it.projectId}`;
+      const name = uf?.name ?? it.projectName ?? 'Untitled project';
+      if (!groups.has(fid)) groups.set(fid, { id: fid, name, isUser: !!uf, items: [] });
+      groups.get(fid)!.items.push(it);
+    }
+    // Empty user folders still render so a folder the user just created from
+    // the dashboard is visible in the popover (collapse-only — no CRUD here).
+    for (const uf of todayPlan.userFolders ?? []) {
+      if (!groups.has(uf.id)) {
+        groups.set(uf.id, { id: uf.id, name: uf.name, isUser: true, items: [] });
+      }
+    }
+    const seen = new Set<string>();
+    const ordered: { id: string; name: string; isUser: boolean; items: typeof sorted }[] = [];
+    for (const fid of todayPlan.folderOrder ?? []) {
+      const g = groups.get(fid);
+      if (g && !seen.has(fid)) { ordered.push(g); seen.add(fid); }
+    }
+    for (const uf of todayPlan.userFolders ?? []) {
+      if (!seen.has(uf.id)) {
+        const g = groups.get(uf.id);
+        if (g) { ordered.push(g); seen.add(uf.id); }
+      }
+    }
+    ordered.push(...[...groups.values()].filter((g) => !seen.has(g.id)).sort((a, b) => a.name.localeCompare(b.name)));
+    return ordered;
+  }, [todayPlan]);
+  const popoverShowHeaders = popoverGroups.length > 1 || (todayPlan?.userFolders ?? []).length > 0;
+  const popoverSortableIds = useMemo(() => {
+    const collapsedMap = todayPlan?.collapsedFolders ?? {};
+    return popoverGroups.flatMap((g) => {
+      const header = popoverShowHeaders ? [g.id] : [];
+      const items = collapsedMap[g.id] ? [] : g.items.map((i) => popItemSortableId(i.todoId));
+      return [...header, ...items];
+    });
+  }, [popoverGroups, popoverShowHeaders, todayPlan?.collapsedFolders]);
+  const popoverToggleCollapse = useCallback((id: string) => {
+    (window.zenstate as unknown as { todayFolderToggleCollapse: (id: string) => Promise<unknown> })
+      .todayFolderToggleCollapse(id).catch((e) => console.warn('[MenuBarView] folder toggle failed:', e));
+  }, []);
+  const popSensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 8 } }),
+  );
+  const popDragEnd = useCallback((event: DragEndEvent) => {
+    if (!todayPlan) return;
+    const active = String(event.active.id);
+    const over = event.over ? String(event.over.id) : null;
+    if (!over || active === over) return;
+    const oldIdx = popoverSortableIds.indexOf(active);
+    const newIdx = popoverSortableIds.indexOf(over);
+    if (oldIdx < 0 || newIdx < 0) return;
+    const newOrder = arrayMove(popoverSortableIds, oldIdx, newIdx);
+
+    if (isPopFolderSortableId(active)) {
+      const newFolderOrder = newOrder.filter((id) => isPopFolderSortableId(id));
+      (window.zenstate as unknown as { todayFolderReorder: (ids: string[]) => Promise<unknown> }).todayFolderReorder(newFolderOrder);
+      return;
+    }
+
+    const todoId = parsePopItemSortableId(active);
+    if (todoId === null) return;
+    const newPos = newOrder.indexOf(active);
+    let destFolderId: string | null = null;
+    for (let i = newPos - 1; i >= 0; i--) {
+      if (isPopFolderSortableId(newOrder[i])) { destFolderId = newOrder[i]; break; }
+    }
+    if (!destFolderId) {
+      const moved = todayPlan.items.find((p) => p.todoId === todoId);
+      if (moved) {
+        const uf = moved.folderId ? (todayPlan.userFolders ?? []).find((f) => f.id === moved.folderId) : undefined;
+        destFolderId = uf ? uf.id : `project-${moved.projectId}`;
+      }
+    }
+    if (!destFolderId) return;
+    let intraIdx = 0;
+    for (let i = 0; i < newPos; i++) {
+      const id = newOrder[i];
+      if (isPopFolderSortableId(id)) continue;
+      let itemFolder: string | null = null;
+      for (let j = i - 1; j >= 0; j--) {
+        if (isPopFolderSortableId(newOrder[j])) { itemFolder = newOrder[j]; break; }
+      }
+      if (!itemFolder) {
+        const tid = parsePopItemSortableId(id);
+        const it = tid != null ? todayPlan.items.find((p) => p.todoId === tid) : null;
+        if (it) {
+          const uf = it.folderId ? (todayPlan.userFolders ?? []).find((f) => f.id === it.folderId) : undefined;
+          itemFolder = uf ? uf.id : `project-${it.projectId}`;
+        }
+      }
+      if (itemFolder === destFolderId) intraIdx++;
+    }
+    const isUserFolder = (todayPlan.userFolders ?? []).some((f) => f.id === destFolderId);
+    (window.zenstate as unknown as { todayItemMove: (todoId: number, folderId: string | null, index: number) => Promise<unknown> })
+      .todayItemMove(todoId, isUserFolder ? destFolderId : null, intraIdx);
+  }, [popoverSortableIds, todayPlan]);
 
   function handleSetStatusMessage() {
     if (!statusMessageInput.trim()) return;
@@ -569,75 +689,115 @@ export default function MenuBarView({ currentUser, peers, timerState, statusReve
           ) : todayPlan.items.length > 0 ? (
             <div style={{ padding: '6px 16px 0', flex: 1, overflowY: 'auto' }}>
               <div style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
-                {/* Show ALL items — the parent div scrolls if there are many.
-                Sort completed items to the bottom so active todos stay above
-                the fold; users hate scrolling past struck-through rows to
-                find what's still actionable. */}
-                {[...todayPlan.items].sort((a, b) => Number(!!a.completedAt) - Number(!!b.completedAt)).map((p) => {
-                  // v5.1.4 — Match by Basecamp todoId when both sides have it;
-                  // fall back to label match for non-Basecamp timer sessions.
-                  // Without this, two same-name pinned todos both render as
-                  // "running" when the timer is on either one of them.
-                  const running = isTimerActive && (
-                    (timerState.basecampTodoId && p.todoId)
-                      ? timerState.basecampTodoId === p.todoId
-                      : timerState.taskLabel === p.content
-                  );
-                  const isComplete = !!p.completedAt;
-                  // Don't allow starting a timer on a completed task — the user
-                  // marked it done, so the Start button is disabled until they
-                  // un-check it on the dashboard.
-                  const startDisabled = isTimerActive || isComplete;
-                  return (
-                    <div
-                      key={p.todoId}
-                      style={{
-                        display: 'flex', alignItems: 'center', gap: 8,
-                        padding: '6px 10px',
-                        borderRadius: 'var(--radius-sm)',
-                        background: running ? 'rgba(48, 209, 88, 0.08)' : 'var(--zen-tertiary-bg)',
-                        border: `1px solid ${running ? 'rgba(48, 209, 88, 0.25)' : 'var(--zen-divider)'}`,
-                        opacity: isComplete ? 0.55 : 1,
-                        transition: 'background var(--duration-quick) var(--ease-standard), opacity var(--duration-quick) var(--ease-standard)',
-                      }}
-                    >
-                      <div style={{
-                        width: 8, height: 8, borderRadius: '50%',
-                        background: isComplete ? 'var(--status-available)' : (running ? 'var(--status-available)' : 'transparent'),
-                        border: isComplete || running ? 'none' : '1.5px solid var(--zen-tertiary-text)',
-                        flexShrink: 0,
-                        boxShadow: running ? '0 0 6px rgba(48, 209, 88, 0.5)' : 'none',
-                      }} />
-                      <div style={{ flex: 1, minWidth: 0 }}>
-                        <div style={{
-                          fontSize: 'var(--text-sm)', color: 'var(--zen-text)',
-                          textDecoration: isComplete ? 'line-through' : 'none',
-                          overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-                        }}>
-                          {p.content}
-                        </div>
-                        {p.projectName && (
-                          <div style={{ fontSize: 10, color: 'var(--zen-tertiary-text)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', marginTop: 1 }}>
-                            {p.projectName}
+                {/* v5.7.0 — Sort completed items to the bottom, THEN group by
+                folder so users with multiple projects don't see one long flat
+                list. Header is suppressed when there's only one resulting
+                group (single-project users see no extra chrome). */}
+                <DndContext sensors={popSensors} collisionDetection={closestCenter} onDragEnd={popDragEnd}>
+                  <SortableContext items={popoverSortableIds} strategy={verticalListSortingStrategy}>
+                    {popoverGroups.flatMap((group) => {
+                      const isCollapsed = !!(todayPlan?.collapsedFolders ?? {})[group.id];
+                      const Chevron = isCollapsed ? ChevronRight : ChevronDown;
+                      return [
+                      popoverShowHeaders && (
+                        <SortablePopWrap key={`h-${group.id}`} id={group.id}>
+                          <div
+                            onClick={() => popoverToggleCollapse(group.id)}
+                            style={{
+                              display: 'flex', alignItems: 'center', gap: 4,
+                              padding: '6px 4px 2px',
+                              fontSize: 9,
+                              fontWeight: 700,
+                              letterSpacing: 0.6,
+                              textTransform: 'uppercase',
+                              color: 'var(--zen-tertiary-text)',
+                              cursor: 'pointer',
+                              userSelect: 'none',
+                            }}
+                          >
+                            <Chevron size={10} style={{ flexShrink: 0, opacity: 0.7 }} />
+                            <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{group.name}</span>
+                            <span style={{ flex: 1 }} />
+                            <span style={{ fontSize: 9, fontWeight: 400, textTransform: 'none', letterSpacing: 0, opacity: 0.8 }}>
+                              {group.isUser && group.items.length === 0 ? 'empty' : group.items.length}
+                            </span>
                           </div>
-                        )}
-                      </div>
-                      {running ? (
-                        <button onClick={() => window.zenstate.stopTimer()} title="Stop"
-                          style={{ background: 'rgba(255,149,0,0.18)', border: '1px solid rgba(255,149,0,0.32)', color: 'var(--status-occupied)', cursor: 'pointer', padding: '4px 9px', borderRadius: 6, fontSize: 10, fontWeight: 600, fontFamily: 'inherit', flexShrink: 0 }}>
-                          Stop
-                        </button>
-                      ) : (
-                        <button onClick={() => handleStartFromPinned(p)}
-                          title={isComplete ? 'Marked complete — un-check on the Plan tab to restart' : 'Start timer'}
-                          disabled={startDisabled}
-                          style={{ background: 'var(--zen-primary)', border: 'none', color: 'white', cursor: startDisabled ? 'not-allowed' : 'pointer', opacity: startDisabled ? 0.4 : 1, padding: '4px 9px', borderRadius: 6, fontSize: 10, fontWeight: 600, fontFamily: 'inherit', flexShrink: 0, display: 'inline-flex', alignItems: 'center', gap: 3 }}>
-                          <Play size={9} /> Start
-                        </button>
-                      )}
-                    </div>
-                  );
-                })}
+                        </SortablePopWrap>
+                      ),
+                      ...(isCollapsed ? [] : group.items).map((p) => {
+                        const running = isTimerActive && (
+                          (timerState.basecampTodoId && p.todoId)
+                            ? timerState.basecampTodoId === p.todoId
+                            : timerState.taskLabel === p.content
+                        );
+                        const isComplete = !!p.completedAt;
+                        const startDisabled = isTimerActive || isComplete;
+                        return (
+                          <SortablePopWrap key={p.todoId} id={popItemSortableId(p.todoId)}>
+                            <div style={{
+                              display: 'flex', alignItems: 'center', gap: 8,
+                              padding: '6px 10px',
+                              borderRadius: 'var(--radius-sm)',
+                              background: running ? 'rgba(48, 209, 88, 0.08)' : 'var(--zen-tertiary-bg)',
+                              border: `1px solid ${running ? 'rgba(48, 209, 88, 0.25)' : 'var(--zen-divider)'}`,
+                              opacity: isComplete ? 0.55 : 1,
+                              transition: 'background var(--duration-quick) var(--ease-standard), opacity var(--duration-quick) var(--ease-standard)',
+                            }}>
+                              <div style={{
+                                width: 8, height: 8, borderRadius: '50%',
+                                background: isComplete ? 'var(--status-available)' : (running ? 'var(--status-available)' : 'transparent'),
+                                border: isComplete || running ? 'none' : '1.5px solid var(--zen-tertiary-text)',
+                                flexShrink: 0,
+                                boxShadow: running ? '0 0 6px rgba(48, 209, 88, 0.5)' : 'none',
+                              }} />
+                              <div style={{ flex: 1, minWidth: 0 }}>
+                                <div style={{
+                                  fontSize: 'var(--text-sm)', color: 'var(--zen-text)',
+                                  textDecoration: isComplete ? 'line-through' : 'none',
+                                  overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                                }}>
+                                  {p.content}
+                                </div>
+                                {!popoverShowHeaders && p.projectName && (
+                                  <div style={{ fontSize: 10, color: 'var(--zen-tertiary-text)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', marginTop: 1 }}>
+                                    {p.projectName}
+                                  </div>
+                                )}
+                              </div>
+                              {running ? (
+                                <button onClick={() => window.zenstate.stopTimer()} title="Stop"
+                                  style={{ background: 'rgba(255,149,0,0.18)', border: '1px solid rgba(255,149,0,0.32)', color: 'var(--status-occupied)', cursor: 'pointer', padding: '4px 9px', borderRadius: 6, fontSize: 10, fontWeight: 600, fontFamily: 'inherit', flexShrink: 0 }}>
+                                  Stop
+                                </button>
+                              ) : (
+                                <button onClick={() => handleStartFromPinned(p)}
+                                  title={isComplete ? 'Marked complete — un-check on the Plan tab to restart' : 'Start timer'}
+                                  disabled={startDisabled}
+                                  style={{ background: 'var(--zen-primary)', border: 'none', color: 'white', cursor: startDisabled ? 'not-allowed' : 'pointer', opacity: startDisabled ? 0.4 : 1, padding: '4px 9px', borderRadius: 6, fontSize: 10, fontWeight: 600, fontFamily: 'inherit', flexShrink: 0, display: 'inline-flex', alignItems: 'center', gap: 3 }}>
+                                  <Play size={9} /> Start
+                                </button>
+                              )}
+                            </div>
+                          </SortablePopWrap>
+                        );
+                      }),
+                      !isCollapsed && group.isUser && group.items.length === 0 && (
+                        <div key={`empty-${group.id}`} style={{
+                          padding: '8px 10px',
+                          fontSize: 10,
+                          color: 'var(--zen-tertiary-text)',
+                          textAlign: 'center',
+                          fontStyle: 'italic',
+                          borderRadius: 'var(--radius-sm)',
+                          border: '1px dashed var(--zen-divider)',
+                        }}>
+                          Empty folder — drag a task here in the Dashboard.
+                        </div>
+                      ),
+                    ];
+                    })}
+                  </SortableContext>
+                </DndContext>
               </div>
             </div>
           ) : (
@@ -890,6 +1050,24 @@ export default function MenuBarView({ currentUser, peers, timerState, statusReve
       {showPingSheet && (
         <SendPingSheet peers={peers} onClose={() => setShowPingSheet(false)} />
       )}
+    </div>
+  );
+}
+
+
+// v5.7.0 — Generic sortable wrapper used by the popover today list. Whole
+// element is draggable; PointerSensor.activationConstraint.distance (set at
+// MenuBarView) keeps click-only interactions on inner buttons intact.
+function SortablePopWrap({ id, children }: { id: string; children: React.ReactNode }) {
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id });
+  const style: React.CSSProperties = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+    opacity: isDragging ? 0.5 : 1,
+  };
+  return (
+    <div ref={setNodeRef} style={style} {...attributes} {...listeners}>
+      {children}
     </div>
   );
 }

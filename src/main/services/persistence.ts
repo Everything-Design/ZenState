@@ -169,11 +169,25 @@ export class PersistenceService {
       if (seen.has(item.todoId)) continue;
       seen.add(item.todoId);
       // Strip any stale completedAt on items being promoted from tomorrow —
-      // a fresh day starts fresh.
+      // a fresh day starts fresh. Folder assignment (folderId) IS preserved
+      // so a carried-over item stays in its user folder.
       merged.push({ ...item, completedAt: undefined });
     }
 
     const newToday: TodayPlan = { date: today, items: merged };
+    // v5.7.0 — Preserve folder structure across rollover. If yesterday's plan
+    // had user folders / explicit ordering / collapse state, carry them
+    // forward. Items dropping out (completed yesterday) leave their folder
+    // possibly empty — empty user folders persist; empty auto-folders simply
+    // don't render. `folderOrder` may contain stale folder IDs, which the
+    // renderer tolerates (unknown IDs are ignored).
+    if (stored && stored.date < today) {
+      if (stored.userFolders?.length) newToday.userFolders = stored.userFolders;
+      if (stored.folderOrder?.length) newToday.folderOrder = stored.folderOrder;
+      if (stored.collapsedFolders && Object.keys(stored.collapsedFolders).length) {
+        newToday.collapsedFolders = stored.collapsedFolders;
+      }
+    }
     // Persist the rolled-over plan so subsequent reads in the same day are
     // stable, and clear the tomorrow slot now that it's been promoted.
     store.set('todayPlan', newToday);

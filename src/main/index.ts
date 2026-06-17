@@ -417,11 +417,24 @@ app.on('before-quit', () => {
   // are created with `closable: false` options, which silently blocks Electron's
   // exit sequence on macOS/Windows as Electron's teardown fails to close locked windows.
   // Re-enabling closability on all windows allows the app to quit cleanly.
-  BrowserWindow.getAllWindows().forEach((w) => {
-    if (!w.isDestroyed()) {
+  //
+  // v5.7.0 — Electron 42 made setClosable(true) less reliable at unblocking
+  // the teardown on macOS — the close attempt still races with NSWindow
+  // state and the popover/mini-timer can keep the app alive past quit.
+  // Switching to direct destroy() on the closable:false windows bypasses
+  // the close path entirely. destroy() ignores closable and forcibly tears
+  // the BrowserWindow down. The dashboard + alert windows are closable:true
+  // and don't need this, so we leave them to the normal close path.
+  for (const w of BrowserWindow.getAllWindows()) {
+    if (w.isDestroyed()) continue;
+    try {
       w.setClosable(true);
+      const isPopoverOrMini = w === popoverWindow || w === miniTimerWindow;
+      if (isPopoverOrMini) w.destroy();
+    } catch (err) {
+      console.warn('[before-quit] window teardown failed:', err);
     }
-  });
+  }
   networking?.stop();
   globalShortcut.unregisterAll();
 });
@@ -2073,9 +2086,36 @@ function setupIPC() {
   });
 
   // Install update (quit and install)
+  // v5.7.0 — Restart-to-update was failing again post Electron 33→42 upgrade.
+  // Same root cause as v5.3.5: autoUpdater.quitAndInstall() calls app.quit()
+  // internally, but if any window (popover/mini-timer with closable:false)
+  // doesn't actually close in time, the process stays alive and the
+  // ShipIt/NSIS installer waits forever for the parent to exit.
+  //
+  // Defence in depth:
+  //   1. Set isQuitting=true UP FRONT (don't rely on before-quit firing first
+  //      to set it). That way window-all-closed's escape hatch (app.exit(0))
+  //      activates the moment the last window does close.
+  //   2. before-quit now destroy()s the popover + mini-timer (see above) so
+  //      they can't stall the teardown anymore.
+  //   3. Hard-exit fallback after 3s. autoUpdater.quitAndInstall() spawns the
+  //      Squirrel.Mac/NSIS installer BEFORE returning, so the install is
+  //      already in flight by the time this fires — we're just guaranteeing
+  //      the parent process actually goes away.
   ipcMain.on('app:install-update', () => {
+    console.log('[install-update] received — beginning quit-and-install sequence');
+    isQuitting = true;
     const { autoUpdater } = require('electron-updater');
-    autoUpdater.quitAndInstall();
+    try {
+      autoUpdater.quitAndInstall();
+      console.log('[install-update] quitAndInstall returned');
+    } catch (err) {
+      console.error('[install-update] quitAndInstall threw:', err);
+    }
+    setTimeout(() => {
+      console.log('[install-update] fallback timeout — forcing app.exit(0)');
+      app.exit(0);
+    }, 3000);
   });
 
   // Check for update (manual) — returns result directly
@@ -2712,6 +2752,119 @@ function setupIPC() {
       persistence.saveTodayPlan(plan);
       broadcastToWindows(IPC.TODAY_CHANGED, plan);
     }
+    return plan;
+  });
+
+  // v5.7.0 — Folder organization for the Today plan. Auto-folders (one per
+  // Basecamp project) are derived in the renderer from `item.projectId` and
+  // are NOT stored. User-folders live in `plan.userFolders`. An item's
+  // folder ID is `item.folderId` if set, else `project-${item.projectId}`.
+  function resolveItemFolderId(item: { folderId?: string; projectId: number }): string {
+    return item.folderId ?? `project-${item.projectId}`;
+  }
+
+  ipcMain.handle(IPC.TODAY_FOLDER_CREATE, (_e, data: { name: string }) => {
+    const plan = persistence.getTodayPlan();
+    const name = (data.name ?? '').trim().slice(0, 60);
+    if (!name) return { ok: false, error: 'Folder name required' };
+    const folder = { id: crypto.randomUUID(), name, createdAt: new Date().toISOString() };
+    plan.userFolders = [...(plan.userFolders ?? []), folder];
+    persistence.saveTodayPlan(plan);
+    broadcastToWindows(IPC.TODAY_CHANGED, plan);
+    return { ok: true, folder, plan };
+  });
+
+  ipcMain.handle(IPC.TODAY_FOLDER_RENAME, (_e, data: { id: string; name: string }) => {
+    const plan = persistence.getTodayPlan();
+    const name = (data.name ?? '').trim().slice(0, 60);
+    if (!name) return { ok: false, error: 'Folder name required', plan };
+    const folder = (plan.userFolders ?? []).find((f) => f.id === data.id);
+    if (!folder) return { ok: false, error: 'Folder not found', plan };
+    folder.name = name;
+    persistence.saveTodayPlan(plan);
+    broadcastToWindows(IPC.TODAY_CHANGED, plan);
+    return { ok: true, plan };
+  });
+
+  ipcMain.handle(IPC.TODAY_FOLDER_DELETE, (_e, data: { id: string }) => {
+    const plan = persistence.getTodayPlan();
+    plan.userFolders = (plan.userFolders ?? []).filter((f) => f.id !== data.id);
+    // Items that lived in this folder revert to their project auto-folder.
+    for (const item of plan.items) {
+      if (item.folderId === data.id) delete item.folderId;
+    }
+    // Strip the deleted folder from order + collapsed state to keep things tidy.
+    if (plan.folderOrder) plan.folderOrder = plan.folderOrder.filter((id) => id !== data.id);
+    if (plan.collapsedFolders) {
+      const next = { ...plan.collapsedFolders };
+      delete next[data.id];
+      plan.collapsedFolders = next;
+    }
+    persistence.saveTodayPlan(plan);
+    broadcastToWindows(IPC.TODAY_CHANGED, plan);
+    return plan;
+  });
+
+  ipcMain.handle(IPC.TODAY_FOLDER_REORDER, (_e, folderIds: string[]) => {
+    const plan = persistence.getTodayPlan();
+    plan.folderOrder = Array.isArray(folderIds) ? [...folderIds] : [];
+    persistence.saveTodayPlan(plan);
+    broadcastToWindows(IPC.TODAY_CHANGED, plan);
+    return plan;
+  });
+
+  ipcMain.handle(IPC.TODAY_FOLDER_TOGGLE_COLLAPSE, (_e, data: { id: string }) => {
+    const plan = persistence.getTodayPlan();
+    const next = { ...(plan.collapsedFolders ?? {}) };
+    if (next[data.id]) delete next[data.id]; else next[data.id] = true;
+    plan.collapsedFolders = next;
+    persistence.saveTodayPlan(plan);
+    broadcastToWindows(IPC.TODAY_CHANGED, plan);
+    return plan;
+  });
+
+  // Move (or reorder) a pinned item: optionally change its folder AND set its
+  // intra-folder position. `index` is the desired position among items in the
+  // destination folder (0-based). `folderId: null` reverts to the project
+  // auto-folder. To keep render order stable, we resort items[] so that the
+  // moved item lands at the right index among items sharing the destination
+  // folder ID.
+  ipcMain.handle(IPC.TODAY_ITEM_MOVE, (_e, data: { todoId: number; folderId: string | null; index: number }) => {
+    const plan = persistence.getTodayPlan();
+    const idx = plan.items.findIndex((p) => p.todoId === data.todoId);
+    if (idx < 0) return plan;
+    const [item] = plan.items.splice(idx, 1);
+    if (data.folderId === null) delete item.folderId; else item.folderId = data.folderId;
+
+    const destFolderId = resolveItemFolderId(item);
+    const targetIndex = Math.max(0, Math.floor(data.index ?? 0));
+
+    // Find absolute insertion point so the item is the Nth member of the
+    // destination folder among items[].
+    let insertAt = plan.items.length;
+    let count = 0;
+    for (let i = 0; i < plan.items.length; i++) {
+      if (resolveItemFolderId(plan.items[i]) === destFolderId) {
+        if (count === targetIndex) {
+          insertAt = i;
+          break;
+        }
+        count++;
+      }
+    }
+    // If we never hit `targetIndex`, the folder has fewer items than that —
+    // append after the last existing member (or at end if folder was empty).
+    if (insertAt === plan.items.length) {
+      let lastSame = -1;
+      for (let i = 0; i < plan.items.length; i++) {
+        if (resolveItemFolderId(plan.items[i]) === destFolderId) lastSame = i;
+      }
+      insertAt = lastSame + 1;
+    }
+    plan.items.splice(insertAt, 0, item);
+
+    persistence.saveTodayPlan(plan);
+    broadcastToWindows(IPC.TODAY_CHANGED, plan);
     return plan;
   });
 

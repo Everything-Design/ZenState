@@ -1,10 +1,26 @@
 import React, { useEffect, useState, useCallback, useMemo, useRef } from 'react';
-import { Plus, Play, Pause, Square, X, Clock, Briefcase, Check, ArrowLeft, Search, Timer, ChevronDown } from 'lucide-react';
+import { Plus, Play, Pause, Square, X, Clock, Briefcase, Check, ArrowLeft, Search, Timer, ChevronDown, ChevronRight, Pencil, Trash2, FolderPlus } from 'lucide-react';
 import {
   IPC, TodayPlan, PinnedTodo, RecentTodo,
   BasecampAuthState, BasecampProject, BasecampTodoList, BasecampTodo, DailyRecord,
   MyAssignment, MyAssignmentsResponse, MyAssignmentsDueScope, TodoSearchResult,
 } from '../../../shared/types';
+// v5.7.0 — Drag-and-drop for folder + item reorder. Single flat SortableContext
+// containing folder header IDs interleaved with item IDs (prefixed `item-`).
+// On drop we inspect the active ID's type and the new flat order to derive
+// either a TODAY_FOLDER_REORDER or TODAY_ITEM_MOVE call.
+import {
+  DndContext, DragEndEvent, PointerSensor, useSensor, useSensors, closestCenter,
+} from '@dnd-kit/core';
+import {
+  SortableContext, useSortable, verticalListSortingStrategy, arrayMove,
+} from '@dnd-kit/sortable';
+import { CSS } from '@dnd-kit/utilities';
+
+const itemSortableId = (todoId: number) => `item-${todoId}`;
+const parseItemSortableId = (id: string): number | null =>
+  id.startsWith('item-') ? Number(id.slice(5)) : null;
+const isFolderSortableId = (id: string) => !id.startsWith('item-');
 
 // Bridge type — avoids `(window as any)` at every call site.
 const zs = window.zenstate as unknown as {
@@ -86,6 +102,178 @@ export default function TodayTab({ timerState, records, onOpenSettings, onRefres
     const complete = filteredItems.filter((i) => !!i.completedAt);
     return [...incomplete, ...complete];
   }, [filteredItems]);
+
+  // v5.7.0 — Group sortedItems by folder. Each item's folder is `item.folderId`
+  // if set (user folder), else `project-${projectId}` (auto-folder). Render
+  // order: explicit folderOrder first, then user folders (creation order),
+  // then auto-folders alphabetical by project name. Headers are suppressed
+  // when there's only one resulting group (no value in adding chrome when
+  // every pinned item lives in the same project anyway).
+  const folderGroups = useMemo(() => {
+    const groups = new Map<string, { id: string; name: string; isUser: boolean; items: typeof sortedItems }>();
+    for (const item of sortedItems) {
+      const stated = item.folderId;
+      const userFolder = stated ? (plan.userFolders ?? []).find((f) => f.id === stated) : undefined;
+      // If folderId points at a deleted user folder, fall back to project auto-folder.
+      const resolved = userFolder ? stated! : `project-${item.projectId}`;
+      const isUser = !!userFolder;
+      const name = userFolder?.name ?? item.projectName ?? 'Untitled project';
+      if (!groups.has(resolved)) groups.set(resolved, { id: resolved, name, isUser, items: [] });
+      groups.get(resolved)!.items.push(item);
+    }
+    // v5.7.0 — Ensure every user folder appears in the render even when empty.
+    // Without this, a freshly-created folder would be invisible until the user
+    // drags an item into it.
+    for (const uf of plan.userFolders ?? []) {
+      if (!groups.has(uf.id)) {
+        groups.set(uf.id, { id: uf.id, name: uf.name, isUser: true, items: [] });
+      }
+    }
+    const seen = new Set<string>();
+    const ordered: { id: string; name: string; isUser: boolean; items: typeof sortedItems }[] = [];
+    for (const fid of plan.folderOrder ?? []) {
+      const g = groups.get(fid);
+      if (g && !seen.has(fid)) { ordered.push(g); seen.add(fid); }
+    }
+    for (const uf of plan.userFolders ?? []) {
+      if (!seen.has(uf.id)) {
+        const g = groups.get(uf.id);
+        if (g) { ordered.push(g); seen.add(uf.id); }
+      }
+    }
+    const remaining = [...groups.values()]
+      .filter((g) => !seen.has(g.id))
+      .sort((a, b) => a.name.localeCompare(b.name));
+    ordered.push(...remaining);
+    return ordered;
+  }, [sortedItems, plan.userFolders, plan.folderOrder]);
+  // Headers show when there are multiple groups OR when any user folder exists
+  // (even a single user folder is a deliberate structure the user wants to see).
+  const showFolderHeaders = folderGroups.length > 1 || (plan.userFolders ?? []).length > 0;
+
+  // v5.7.0 — Drag-and-drop wiring for folder + item reorder. Sortable IDs are
+  // a flat interleaved list: each folder header (if shown) followed by its
+  // items (prefixed `item-`). After drag, we apply arrayMove on this flat list
+  // and read off either the new folder order (active was a folder) or the
+  // moved item's new folder + intra-folder index (active was an item).
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 8 } }),
+  );
+  const sortableIds = useMemo(() => {
+    const collapsedMap = plan.collapsedFolders ?? {};
+    return folderGroups.flatMap((g) => {
+      const header = showFolderHeaders ? [g.id] : [];
+      const items = collapsedMap[g.id] ? [] : g.items.map((i) => itemSortableId(i.todoId));
+      return [...header, ...items];
+    });
+  }, [folderGroups, showFolderHeaders, plan.collapsedFolders]);
+  // v5.7.0 — Folder UI state. Folder-create has an inline-input mode; folder
+  // rename swaps the header in-place for an input. Delete uses a small inline
+  // confirm rather than a modal because deletion is non-destructive (items
+  // revert to their auto-folder).
+  const [creatingFolder, setCreatingFolder] = useState(false);
+  const [newFolderName, setNewFolderName] = useState('');
+  const [renamingFolderId, setRenamingFolderId] = useState<string | null>(null);
+  const [renameDraft, setRenameDraft] = useState('');
+  const [confirmDeleteFolderId, setConfirmDeleteFolderId] = useState<string | null>(null);
+  const newFolderInputRef = useRef<HTMLInputElement>(null);
+  const renameInputRef = useRef<HTMLInputElement>(null);
+  useEffect(() => { if (creatingFolder) newFolderInputRef.current?.focus(); }, [creatingFolder]);
+  useEffect(() => { if (renamingFolderId) renameInputRef.current?.focus(); }, [renamingFolderId]);
+  const zs2 = window.zenstate as unknown as {
+    todayFolderCreate: (name: string) => Promise<{ ok: boolean; folder?: { id: string }; error?: string; plan?: TodayPlan }>;
+    todayFolderRename: (id: string, name: string) => Promise<{ ok: boolean; error?: string; plan?: TodayPlan }>;
+    todayFolderDelete: (id: string) => Promise<TodayPlan>;
+    todayFolderToggleCollapse: (id: string) => Promise<TodayPlan>;
+  };
+  const commitNewFolder = useCallback(async () => {
+    const name = newFolderName.trim();
+    if (!name) { setCreatingFolder(false); setNewFolderName(''); return; }
+    await zs2.todayFolderCreate(name).catch((e) => console.warn('[Plan] folder create failed:', e));
+    setCreatingFolder(false);
+    setNewFolderName('');
+  }, [newFolderName, zs2]);
+  const startRename = useCallback((id: string, currentName: string) => {
+    setRenamingFolderId(id);
+    setRenameDraft(currentName);
+  }, []);
+  const commitRename = useCallback(async () => {
+    if (!renamingFolderId) return;
+    const name = renameDraft.trim();
+    if (name) {
+      await zs2.todayFolderRename(renamingFolderId, name).catch((e) => console.warn('[Plan] folder rename failed:', e));
+    }
+    setRenamingFolderId(null);
+    setRenameDraft('');
+  }, [renamingFolderId, renameDraft, zs2]);
+  const handleToggleCollapse = useCallback((id: string) => {
+    zs2.todayFolderToggleCollapse(id).catch((e) => console.warn('[Plan] folder toggle failed:', e));
+  }, [zs2]);
+  const handleDeleteFolder = useCallback(async (id: string) => {
+    await zs2.todayFolderDelete(id).catch((e) => console.warn('[Plan] folder delete failed:', e));
+    setConfirmDeleteFolderId(null);
+  }, [zs2]);
+  const onDragEnd = useCallback((event: DragEndEvent) => {
+    const active = String(event.active.id);
+    const over = event.over ? String(event.over.id) : null;
+    if (!over || active === over) return;
+    const oldIdx = sortableIds.indexOf(active);
+    const newIdx = sortableIds.indexOf(over);
+    if (oldIdx < 0 || newIdx < 0) return;
+    const newOrder = arrayMove(sortableIds, oldIdx, newIdx);
+
+    if (isFolderSortableId(active)) {
+      // Folder reorder — collect folder IDs in their new flat-list order.
+      const newFolderOrder = newOrder.filter((id) => isFolderSortableId(id));
+      (window.zenstate as unknown as { todayFolderReorder: (ids: string[]) => Promise<unknown> }).todayFolderReorder(newFolderOrder);
+      return;
+    }
+
+    // Item move. Destination folder = nearest preceding folder header ID in
+    // the new flat order. Intra-folder index = number of items before it that
+    // resolve to the same destination folder.
+    const todoId = parseItemSortableId(active);
+    if (todoId === null) return;
+    const newPos = newOrder.indexOf(active);
+    let destFolderId: string | null = null;
+    for (let i = newPos - 1; i >= 0; i--) {
+      if (isFolderSortableId(newOrder[i])) { destFolderId = newOrder[i]; break; }
+    }
+    // Fallback (no headers shown, single-folder case): use the moved item's
+    // current folder so the IPC just reorders within it.
+    if (!destFolderId) {
+      const moved = plan.items.find((p) => p.todoId === todoId);
+      if (moved) {
+        const uf = moved.folderId ? (plan.userFolders ?? []).find((f) => f.id === moved.folderId) : undefined;
+        destFolderId = uf ? uf.id : `project-${moved.projectId}`;
+      }
+    }
+    if (!destFolderId) return;
+    let intraIdx = 0;
+    for (let i = 0; i < newPos; i++) {
+      const id = newOrder[i];
+      if (isFolderSortableId(id)) continue;
+      let itemFolder: string | null = null;
+      for (let j = i - 1; j >= 0; j--) {
+        if (isFolderSortableId(newOrder[j])) { itemFolder = newOrder[j]; break; }
+      }
+      // Single-folder case: items have no preceding header — fall back to the moved-item folder.
+      if (!itemFolder) {
+        const tid = parseItemSortableId(id);
+        const it = tid != null ? plan.items.find((p) => p.todoId === tid) : null;
+        if (it) {
+          const uf = it.folderId ? (plan.userFolders ?? []).find((f) => f.id === it.folderId) : undefined;
+          itemFolder = uf ? uf.id : `project-${it.projectId}`;
+        }
+      }
+      if (itemFolder === destFolderId) intraIdx++;
+    }
+    // For the IPC, a user-folder ID stays as-is; an auto-folder ID (`project-*`)
+    // is translated to `null` so the main handler clears `item.folderId`.
+    const isUserFolder = (plan.userFolders ?? []).some((f) => f.id === destFolderId);
+    (window.zenstate as unknown as { todayItemMove: (todoId: number, folderId: string | null, index: number) => Promise<unknown> })
+      .todayItemMove(todoId, isUserFolder ? destFolderId : null, intraIdx);
+  }, [sortableIds, plan.items, plan.userFolders]);
 
   // Initial load + reactive updates from the main process. Subscribe FIRST,
   // then fetch — otherwise an event arriving between the request and its
@@ -357,48 +545,194 @@ export default function TodayTab({ timerState, records, onOpenSettings, onRefres
                 No tasks match "{todoSearchText}"
               </div>
             ) : (
-              sortedItems.map((item) => (
-                <PinnedRow
-                  key={item.todoId}
-                  item={item}
-                  running={isRunning(item)}
-                  paused={isRunning(item) && timerState.isPaused}
-                  trackedToday={trackedByTodoId.get(item.todoId) ?? 0}
-                  editingEstimate={editingEstimate === item.todoId}
-                  onStartEditEstimate={() => setEditingEstimate(item.todoId)}
-                  onSaveEstimate={(min) => handleSetEstimate(item.todoId, min)}
-                  onCancelEditEstimate={() => setEditingEstimate(null)}
-                  onStartTimer={() => handleStartTimer(item)}
-                  onPauseTimer={() => window.zenstate.pauseTimer()}
-                  onResumeTimer={() => window.zenstate.resumeTimer()}
-                  onStopTimer={() => window.zenstate.stopTimer()}
-                  onUnpin={() => handleUnpin(item.todoId)}
-                  onToggleComplete={() => handleToggleComplete(item.todoId)}
-                  onLogTime={() => setLogTimeFor(item)}
-                />
-              ))
+              <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={onDragEnd}>
+                <SortableContext items={sortableIds} strategy={verticalListSortingStrategy}>
+                  {folderGroups.map((group) => {
+                    const isCollapsed = !!(plan.collapsedFolders ?? {})[group.id];
+                    const isRenaming = renamingFolderId === group.id;
+                    return (
+                <React.Fragment key={group.id}>
+                  {showFolderHeaders && (
+                    isRenaming ? (
+                      <div style={{ padding: '6px 4px' }}>
+                        <input
+                          ref={renameInputRef}
+                          value={renameDraft}
+                          onChange={(e) => setRenameDraft(e.target.value)}
+                          onBlur={commitRename}
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter') { e.preventDefault(); commitRename(); }
+                            if (e.key === 'Escape') { setRenamingFolderId(null); setRenameDraft(''); }
+                          }}
+                          maxLength={60}
+                          aria-label="Rename folder"
+                          style={{
+                            width: '100%',
+                            padding: '6px 8px',
+                            fontSize: 'var(--text-xs)',
+                            fontWeight: 600,
+                            letterSpacing: 0.4,
+                            textTransform: 'uppercase',
+                            background: 'var(--zen-tertiary-bg)',
+                            border: '1px solid var(--zen-primary)',
+                            borderRadius: 'var(--radius-sm)',
+                            color: 'var(--zen-text)',
+                            outline: 'none',
+                            fontFamily: 'inherit',
+                          }}
+                        />
+                      </div>
+                    ) : (
+                      <SortableFolderHeader
+                        id={group.id}
+                        name={group.name}
+                        count={group.items.length}
+                        collapsed={isCollapsed}
+                        isUserFolder={group.isUser}
+                        onToggleCollapse={() => handleToggleCollapse(group.id)}
+                        onStartRename={group.isUser ? () => startRename(group.id, group.name) : undefined}
+                        onDelete={group.isUser ? () => setConfirmDeleteFolderId(group.id) : undefined}
+                        emptyHint={group.isUser && group.items.length === 0}
+                      />
+                    )
+                  )}
+                  {confirmDeleteFolderId === group.id && (
+                    <div style={{
+                      padding: '8px 12px', borderRadius: 'var(--radius-md)',
+                      background: 'rgba(255,149,0,0.08)', border: '1px solid rgba(255,149,0,0.25)',
+                      fontSize: 'var(--text-sm)', color: 'var(--zen-text)',
+                      display: 'flex', alignItems: 'center', gap: 'var(--space-2)',
+                    }}>
+                      <span style={{ flex: 1 }}>Delete &ldquo;{group.name}&rdquo;? Items revert to their project group.</span>
+                      <button
+                        onClick={() => handleDeleteFolder(group.id)}
+                        className="btn btn-secondary"
+                        style={{ padding: '4px 10px', fontSize: 'var(--text-xs)', color: 'var(--status-occupied)' }}
+                      >Delete</button>
+                      <button
+                        onClick={() => setConfirmDeleteFolderId(null)}
+                        className="btn btn-secondary"
+                        style={{ padding: '4px 10px', fontSize: 'var(--text-xs)' }}
+                      >Cancel</button>
+                    </div>
+                  )}
+                  {!isCollapsed && group.items.map((item) => (
+                    <SortablePinnedRow
+                      key={item.todoId}
+                      id={itemSortableId(item.todoId)}
+                      item={item}
+                      running={isRunning(item)}
+                      paused={isRunning(item) && timerState.isPaused}
+                      trackedToday={trackedByTodoId.get(item.todoId) ?? 0}
+                      editingEstimate={editingEstimate === item.todoId}
+                      onStartEditEstimate={() => setEditingEstimate(item.todoId)}
+                      onSaveEstimate={(min) => handleSetEstimate(item.todoId, min)}
+                      onCancelEditEstimate={() => setEditingEstimate(null)}
+                      onStartTimer={() => handleStartTimer(item)}
+                      onPauseTimer={() => window.zenstate.pauseTimer()}
+                      onResumeTimer={() => window.zenstate.resumeTimer()}
+                      onStopTimer={() => window.zenstate.stopTimer()}
+                      onUnpin={() => handleUnpin(item.todoId)}
+                      onToggleComplete={() => handleToggleComplete(item.todoId)}
+                      onLogTime={() => setLogTimeFor(item)}
+                    />
+                  ))}
+                  {!isCollapsed && group.isUser && group.items.length === 0 && (
+                    <div style={{
+                      padding: '12px var(--space-3)',
+                      borderRadius: 'var(--radius-md)',
+                      border: '1px dashed var(--zen-divider)',
+                      color: 'var(--zen-tertiary-text)',
+                      fontSize: 'var(--text-sm)',
+                      textAlign: 'center',
+                      fontStyle: 'italic',
+                    }}>
+                      Drag a task here, or pin a new one — items in this folder stay grouped together.
+                    </div>
+                  )}
+                </React.Fragment>
+                    );
+                  })}
+                </SortableContext>
+              </DndContext>
             )}
-            <button
-              onClick={() => setPickerOpen(true)}
-              style={{
-                display: 'flex', alignItems: 'center', justifyContent: 'center',
-                gap: 'var(--space-2)',
-                padding: '10px var(--space-3)',
-                borderRadius: 'var(--radius-md)',
-                background: 'transparent',
-                border: '1px dashed var(--zen-divider)',
-                color: 'var(--zen-secondary-text)',
-                fontSize: 'var(--text-sm)',
-                fontWeight: 500,
-                cursor: 'pointer',
-                fontFamily: 'inherit',
-                transition: 'background var(--duration-quick) var(--ease-standard), color var(--duration-quick) var(--ease-standard), border-color var(--duration-quick) var(--ease-standard)',
-              }}
-              onMouseEnter={(e) => { e.currentTarget.style.background = 'var(--zen-hover)'; e.currentTarget.style.color = 'var(--zen-text)'; e.currentTarget.style.borderColor = 'rgba(255,255,255,0.18)'; }}
-              onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = 'var(--zen-secondary-text)'; e.currentTarget.style.borderColor = 'var(--zen-divider)'; }}
-            >
-              <Plus size={14} /> Pin another to-do
-            </button>
+            {/* v5.7.0 — Inline "+ New folder" input swaps in over the buttons
+                row when active. Enter saves, Escape / blur cancels. */}
+            {creatingFolder ? (
+              <div style={{ display: 'flex', gap: 'var(--space-2)' }}>
+                <input
+                  ref={newFolderInputRef}
+                  value={newFolderName}
+                  onChange={(e) => setNewFolderName(e.target.value)}
+                  onBlur={commitNewFolder}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') { e.preventDefault(); commitNewFolder(); }
+                    if (e.key === 'Escape') { setCreatingFolder(false); setNewFolderName(''); }
+                  }}
+                  placeholder="Folder name"
+                  maxLength={60}
+                  aria-label="New folder name"
+                  style={{
+                    flex: 1,
+                    padding: '10px var(--space-3)',
+                    fontSize: 'var(--text-sm)',
+                    background: 'var(--zen-tertiary-bg)',
+                    border: '1px solid var(--zen-primary)',
+                    borderRadius: 'var(--radius-md)',
+                    color: 'var(--zen-text)',
+                    outline: 'none',
+                    fontFamily: 'inherit',
+                  }}
+                />
+              </div>
+            ) : (
+              <div style={{ display: 'flex', gap: 'var(--space-2)' }}>
+                <button
+                  onClick={() => setPickerOpen(true)}
+                  style={{
+                    flex: 1,
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    gap: 'var(--space-2)',
+                    padding: '10px var(--space-3)',
+                    borderRadius: 'var(--radius-md)',
+                    background: 'transparent',
+                    border: '1px dashed var(--zen-divider)',
+                    color: 'var(--zen-secondary-text)',
+                    fontSize: 'var(--text-sm)',
+                    fontWeight: 500,
+                    cursor: 'pointer',
+                    fontFamily: 'inherit',
+                    transition: 'background var(--duration-quick) var(--ease-standard), color var(--duration-quick) var(--ease-standard), border-color var(--duration-quick) var(--ease-standard)',
+                  }}
+                  onMouseEnter={(e) => { e.currentTarget.style.background = 'var(--zen-hover)'; e.currentTarget.style.color = 'var(--zen-text)'; e.currentTarget.style.borderColor = 'rgba(255,255,255,0.18)'; }}
+                  onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = 'var(--zen-secondary-text)'; e.currentTarget.style.borderColor = 'var(--zen-divider)'; }}
+                >
+                  <Plus size={14} /> Pin another to-do
+                </button>
+                <button
+                  onClick={() => { setCreatingFolder(true); setNewFolderName(''); }}
+                  title="Create a new folder to organise your pinned to-dos"
+                  style={{
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    gap: 'var(--space-2)',
+                    padding: '10px var(--space-3)',
+                    borderRadius: 'var(--radius-md)',
+                    background: 'transparent',
+                    border: '1px dashed var(--zen-divider)',
+                    color: 'var(--zen-secondary-text)',
+                    fontSize: 'var(--text-sm)',
+                    fontWeight: 500,
+                    cursor: 'pointer',
+                    fontFamily: 'inherit',
+                    transition: 'background var(--duration-quick) var(--ease-standard), color var(--duration-quick) var(--ease-standard), border-color var(--duration-quick) var(--ease-standard)',
+                  }}
+                  onMouseEnter={(e) => { e.currentTarget.style.background = 'var(--zen-hover)'; e.currentTarget.style.color = 'var(--zen-text)'; e.currentTarget.style.borderColor = 'rgba(255,255,255,0.18)'; }}
+                  onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = 'var(--zen-secondary-text)'; e.currentTarget.style.borderColor = 'var(--zen-divider)'; }}
+                >
+                  <FolderPlus size={14} /> New folder
+                </button>
+              </div>
+            )}
           </div>
         )}
       </section>
@@ -515,6 +849,117 @@ function EmptyState({ icon, title, body, action }: { icon: React.ReactNode; titl
         <div style={{ fontSize: 'var(--text-sm)', color: 'var(--zen-secondary-text)', maxWidth: 360, lineHeight: 'var(--leading-relaxed)' }}>{body}</div>
       </div>
       {action}
+    </div>
+  );
+}
+
+// v5.7.0 — Folder section header for Today's grouped pinned list. Click on
+// the row (anywhere except action buttons) toggles collapse. User folders get
+// hover-revealed Rename + Delete actions; auto-folders (one-per-project) do
+// not — those are derived from item.projectId and have no editable identity.
+function FolderHeader({
+  name, count, collapsed, isUserFolder, isDragging,
+  onToggleCollapse, onStartRename, onDelete,
+  emptyHint,
+}: {
+  name: string;
+  count: number;
+  collapsed: boolean;
+  isUserFolder: boolean;
+  isDragging?: boolean;
+  onToggleCollapse?: () => void;
+  onStartRename?: () => void;
+  onDelete?: () => void;
+  emptyHint?: boolean;
+}) {
+  const [hovered, setHovered] = useState(false);
+  const Chevron = collapsed ? ChevronRight : ChevronDown;
+  return (
+    <div
+      onClick={onToggleCollapse}
+      onMouseEnter={() => setHovered(true)}
+      onMouseLeave={() => setHovered(false)}
+      style={{
+        display: 'flex', alignItems: 'center', gap: 'var(--space-2)',
+        padding: '6px 4px 6px',
+        fontSize: 'var(--text-xs)',
+        fontWeight: 600,
+        letterSpacing: 0.4,
+        textTransform: 'uppercase',
+        color: 'var(--zen-secondary-text)',
+        cursor: isDragging ? 'grabbing' : 'pointer',
+        userSelect: 'none',
+        borderRadius: 'var(--radius-sm)',
+        background: hovered ? 'var(--zen-hover)' : 'transparent',
+        transition: 'background 120ms ease',
+      }}
+    >
+      <Chevron size={12} style={{ flexShrink: 0, opacity: 0.7 }} />
+      <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{name}</span>
+      <span style={{ fontSize: 'var(--text-xs)', fontWeight: 400, color: 'var(--zen-tertiary-text)', textTransform: 'none', letterSpacing: 0 }}>
+        {emptyHint ? 'empty' : count}
+      </span>
+      <span style={{ flex: 1 }} />
+      {isUserFolder && hovered && !isDragging && (
+        <>
+          <button
+            onClick={(e) => { e.stopPropagation(); onStartRename?.(); }}
+            title="Rename folder"
+            aria-label="Rename folder"
+            style={{
+              background: 'transparent', border: 'none', cursor: 'pointer',
+              color: 'var(--zen-tertiary-text)', padding: 2, borderRadius: 4,
+              display: 'inline-flex', alignItems: 'center',
+            }}
+            onMouseEnter={(e) => { e.currentTarget.style.color = 'var(--zen-text)'; }}
+            onMouseLeave={(e) => { e.currentTarget.style.color = 'var(--zen-tertiary-text)'; }}
+          >
+            <Pencil size={11} />
+          </button>
+          <button
+            onClick={(e) => { e.stopPropagation(); onDelete?.(); }}
+            title="Delete folder (items revert to their project group)"
+            aria-label="Delete folder"
+            style={{
+              background: 'transparent', border: 'none', cursor: 'pointer',
+              color: 'var(--zen-tertiary-text)', padding: 2, borderRadius: 4,
+              display: 'inline-flex', alignItems: 'center',
+            }}
+            onMouseEnter={(e) => { e.currentTarget.style.color = 'var(--status-occupied)'; }}
+            onMouseLeave={(e) => { e.currentTarget.style.color = 'var(--zen-tertiary-text)'; }}
+          >
+            <Trash2 size={11} />
+          </button>
+        </>
+      )}
+    </div>
+  );
+}
+
+// v5.7.0 — DnD wrapper around FolderHeader. Whole header is the drag handle;
+// PointerSensor.activationConstraint.distance (set in TodayTab) keeps single
+// clicks from triggering drag, so the onClick collapse toggle still works.
+function SortableFolderHeader(props: {
+  id: string;
+  name: string;
+  count: number;
+  collapsed: boolean;
+  isUserFolder: boolean;
+  onToggleCollapse: () => void;
+  onStartRename?: () => void;
+  onDelete?: () => void;
+  emptyHint?: boolean;
+}) {
+  const { id, ...rest } = props;
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id });
+  const style: React.CSSProperties = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+    opacity: isDragging ? 0.5 : 1,
+  };
+  return (
+    <div ref={setNodeRef} style={style} {...attributes} {...listeners}>
+      <FolderHeader {...rest} isDragging={isDragging} />
     </div>
   );
 }
@@ -792,6 +1237,25 @@ function PinnedRowImpl({
 // own props haven't changed. With ~10 pins that's 10 unnecessary
 // reconciliations per second.
 const PinnedRow = React.memo(PinnedRowImpl, arePinnedRowPropsEqual);
+
+// v5.7.0 — DnD wrapper around PinnedRow. Whole row is the drag handle;
+// PointerSensor.activationConstraint.distance prevents accidental drag-on-click
+// so the embedded buttons (Start, Stop, complete checkbox, etc.) keep their
+// normal click behaviour.
+function SortablePinnedRow(props: PinnedRowProps & { id: string }) {
+  const { id, ...rest } = props;
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id });
+  const style: React.CSSProperties = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+    opacity: isDragging ? 0.5 : 1,
+  };
+  return (
+    <div ref={setNodeRef} style={style} {...attributes} {...listeners}>
+      <PinnedRow {...rest} />
+    </div>
+  );
+}
 
 // ── PinPicker v2 ───────────────────────────────────────────────────
 // Multi-tab picker: My Todos / Due / Recents / Search / Browse.
