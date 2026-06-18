@@ -28,10 +28,18 @@ function hardenWindow(win: BrowserWindow) {
   });
 }
 
+// v5.7.3 — Single source of truth for popover dimensions, consumed by both
+// createPopoverWindow (initial size) and positionPopover (every-show
+// re-assert). Without this, the popover can shrink a few pixels per show on
+// Windows + HiDPI; the resize cascades over multiple clicks until content
+// visibly clips.
+export const POPOVER_WIDTH = 360;
+export const POPOVER_HEIGHT = 480;
+
 export function createPopoverWindow(url: string): BrowserWindow {
   const win = new BrowserWindow({
-    width: 360,
-    height: 480,
+    width: POPOVER_WIDTH,
+    height: POPOVER_HEIGHT,
     show: false,
     frame: false,
     resizable: false,

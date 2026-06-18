@@ -20,6 +20,21 @@ export interface ReleaseHighlight {
 
 export const RELEASE_HIGHLIGHTS: ReleaseHighlight[] = [
   {
+    version: '5.7.3',
+    title: "What's new in v5.7.3",
+    intro: "Fix for a serious Windows-only popover bug. Multi-clicking the tray icon was making the popover shrink a few pixels each time — eventually clipping content and looking broken. Now stays at its full size, every time.",
+    bullets: [
+      "Windows: popover no longer shrinks on repeated tray clicks. Used to lose a few pixels per show due to a frame:false + HiDPI scaling round-trip; size is now re-asserted from a fixed constant on every show.",
+      "Windows: content that was getting clipped at the edges of the popover should now be fully visible.",
+      "No change for macOS users — same behaviour as v5.7.2.",
+    ],
+    footer: 'Got feedback?',
+    footerLink: {
+      label: 'Drop it in Basecamp',
+      url: 'https://3.basecamp.com/5826042/buckets/38489884/cloud_files/9572235152',
+    },
+  },
+  {
     version: '5.7.2',
     title: "What's new in v5.7.2",
     intro: "Repackaging release — Windows auto-update was failing with sha512 checksum mismatch on v5.7.0 and v5.7.1 because the publish pipeline ran twice and the second run desynced latest.yml against the actual installer. v5.7.2 ships once, cleanly. No new app features.",

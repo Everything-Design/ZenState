@@ -1,6 +1,7 @@
 import { Tray, Menu, nativeImage, BrowserWindow, app, screen } from 'electron';
 import path from 'path';
 import { User, AvailabilityStatus } from '../shared/types';
+import { POPOVER_WIDTH, POPOVER_HEIGHT } from './windows';
 
 let tray: Tray | null = null;
 let onClickCallback: (() => void) | null = null;
@@ -154,16 +155,26 @@ export function positionPopover(window: BrowserWindow) {
   if (!tray) return;
 
   const trayBounds = tray.getBounds();
-  const windowBounds = window.getBounds();
+  // v5.7.3 — Use the CANONICAL popover dimensions, not `window.getBounds()`.
+  // On Windows with `frame: false` + HiDPI scaling (1.25x / 1.5x / 2x), each
+  // show()/setPosition() round-trip through getBounds() introduces a few
+  // pixels of DIP-vs-physical-pixel rounding drift. Reading those drifted
+  // bounds and feeding them back via setBounds compounds the loss every
+  // click — width shrinks first, then height once x can't be clamped any
+  // further. Multi-click users see the popover progressively collapse and
+  // the content visibly clipped at the edges. Sourcing the dimensions from
+  // the createPopoverWindow constants keeps every show grounded to 360x480.
+  const width = POPOVER_WIDTH;
+  const height = POPOVER_HEIGHT;
 
-  let x = Math.round(trayBounds.x + trayBounds.width / 2 - windowBounds.width / 2);
+  let x = Math.round(trayBounds.x + trayBounds.width / 2 - width / 2);
   let y: number;
   if (process.platform === 'darwin') {
     // macOS: tray at top → open below
     y = Math.round(trayBounds.y + trayBounds.height);
   } else {
     // Windows/Linux: tray at bottom → open above
-    y = Math.round(trayBounds.y - windowBounds.height);
+    y = Math.round(trayBounds.y - height);
   }
 
   // v5.1.4 — Clamp to the work area of the display the tray icon lives on.
@@ -178,9 +189,9 @@ export function positionPopover(window: BrowserWindow) {
     // Leave an 8px breathing margin from the work-area edges.
     const margin = 8;
     const minX = wa.x + margin;
-    const maxX = wa.x + wa.width - windowBounds.width - margin;
+    const maxX = wa.x + wa.width - width - margin;
     const minY = wa.y + margin;
-    const maxY = wa.y + wa.height - windowBounds.height - margin;
+    const maxY = wa.y + wa.height - height - margin;
     if (Number.isFinite(maxX) && maxX > minX) {
       x = Math.max(minX, Math.min(x, maxX));
     }
@@ -191,5 +202,9 @@ export function positionPopover(window: BrowserWindow) {
     console.warn('[tray] positionPopover work-area clamp failed; falling back to raw position:', err);
   }
 
-  window.setPosition(x, y);
+  // v5.7.3 — `setBounds` with explicit width/height re-asserts the canonical
+  // dimensions on every show, defending against the Windows DPI drift even
+  // if it ever creeps in from another code path. Replaces the previous
+  // `setPosition(x, y)` which left size alone (and let it shrink).
+  window.setBounds({ x, y, width, height });
 }
