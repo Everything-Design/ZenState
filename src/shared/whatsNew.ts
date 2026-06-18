@@ -20,6 +20,20 @@ export interface ReleaseHighlight {
 
 export const RELEASE_HIGHLIGHTS: ReleaseHighlight[] = [
   {
+    version: '5.7.2',
+    title: "What's new in v5.7.2",
+    intro: "Repackaging release — Windows auto-update was failing with sha512 checksum mismatch on v5.7.0 and v5.7.1 because the publish pipeline ran twice and the second run desynced latest.yml against the actual installer. v5.7.2 ships once, cleanly. No new app features.",
+    bullets: [
+      "Fixes Windows auto-update sha512 verification — users stuck on v5.6.x / v5.7.0 / v5.7.1 can now update successfully.",
+      "No functional changes vs v5.7.1.",
+    ],
+    footer: 'Got feedback?',
+    footerLink: {
+      label: 'Drop it in Basecamp',
+      url: 'https://3.basecamp.com/5826042/buckets/38489884/cloud_files/9572235152',
+    },
+  },
+  {
     version: '5.7.1',
     title: "What's new in v5.7.1",
     intro: "Animated GIF avatars (if you want them). Pick a GIF in Settings → Avatar and it stays animated for anyone who's opted in to motion. Everyone else sees a still first frame — the calm default stays calm.",
