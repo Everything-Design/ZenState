@@ -114,6 +114,32 @@ body {
   flex-direction: column;
 }
 
+/* v5.7.4 — Tame the system scrollbar inside the popover.
+   Default Windows scrollbars are 17px wide and visually consume the
+   right edge whenever today-list content overflows — every row's
+   right padding looks tighter than its left padding (the exact bug
+   the user reported). A 6px overlay-style scrollbar restores
+   left/right symmetry. Doesn't change Mac behaviour (Mac's native
+   overlay scrollbar is already this thin). */
+.popover *::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+.popover *::-webkit-scrollbar-track {
+  background: transparent;
+}
+.popover *::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.18);
+  border-radius: 3px;
+}
+.popover *::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.28);
+}
+.popover * {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255, 255, 255, 0.18) transparent;
+}
+
 /* ── Common Layout ──────────────────────────────────────────── */
 
 .vstack {

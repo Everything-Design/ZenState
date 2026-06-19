@@ -20,6 +20,21 @@ export interface ReleaseHighlight {
 
 export const RELEASE_HIGHLIGHTS: ReleaseHighlight[] = [
   {
+    version: '5.7.4',
+    title: "What's new in v5.7.4",
+    intro: "Windows popover framing now has even padding on left and right (the system scrollbar isn't crowding the right edge anymore), and the auto-update pipeline is locked down so it stops desyncing.",
+    bullets: [
+      "Windows: popover scrollbar is now thin and overlay-style, so the right edge no longer looks crammed when today's list overflows. Left and right padding are visually symmetric again.",
+      "Windows: hardened the Windows installer artifact name so the auto-update sha512 stops drifting between releases. Pinned to ZenState-Setup-${version}.exe via electron-builder config.",
+      "No Mac-visible changes.",
+    ],
+    footer: 'Got feedback?',
+    footerLink: {
+      label: 'Drop it in Basecamp',
+      url: 'https://3.basecamp.com/5826042/buckets/38489884/cloud_files/9572235152',
+    },
+  },
+  {
     version: '5.7.3',
     title: "What's new in v5.7.3",
     intro: "Fix for a serious Windows-only popover bug. Multi-clicking the tray icon was making the popover shrink a few pixels each time — eventually clipping content and looking broken. Now stays at its full size, every time.",
