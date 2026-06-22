@@ -148,6 +148,11 @@ export interface AppSettings {
   // polling.
   checkInPromptEnabled?: boolean;  // 9am auto-draft for Basecamp check-ins
   notificationsEnabled?: boolean;  // poll /my/readings.json for the Hey panel
+  // v5.8.0 — Pinned teammates for the Team time tab's quick-select row. Each
+  // entry is a BC person id (numeric). Persists across sessions; survives BC
+  // re-auth as long as the person still exists. Empty / missing = no
+  // favorites row shown.
+  teamTimeFavoritePeopleIds?: number[];
   // v5.2 — Last date (YYYY-MM-DD) the user dismissed the check-in prompt for.
   // We use this to avoid re-firing the prompt the same day after the user
   // already answered or explicitly skipped.
@@ -579,6 +584,10 @@ export const IPC = {
   BC_UPDATE_TIME_ENTRY: 'basecamp:update-time-entry',
   BC_DELETE_TIME_ENTRY: 'basecamp:delete-time-entry',
   BC_GET_PROJECT_TIMESHEET: 'basecamp:get-project-timesheet',
+  // v5.8.0 — Authenticated user's BC profile (incl. account-admin flag).
+  // Cached client-side; admin status gates the team-visibility toggle.
+  BC_GET_ME: 'basecamp:get-me',
+  BC_LIST_PEOPLE: 'basecamp:list-people',
   BC_BACKFILL_TIMESHEET: 'basecamp:backfill-timesheet',
   // v5.1.0 — pin UX shortcuts. /my/assignments.json removes the 3-layer drill
   // for the common "pin one of my todos" case; search/due are tab fallbacks.

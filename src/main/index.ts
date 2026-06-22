@@ -2442,6 +2442,24 @@ function setupIPC() {
       return { ok: false, error: describeError(err, 'getProjectTimesheet') };
     }
   });
+  // v5.8.0 — Authenticated user's BC profile. Returns the account-admin flag
+  // that gates the team-visibility settings toggle. Sub-1KB response; called
+  // once on dashboard mount and cached in the renderer.
+  ipcMain.handle(IPC.BC_GET_ME, async () => {
+    try {
+      return { ok: true, data: await basecamp.api.getMe() };
+    } catch (err) {
+      return { ok: false, error: describeError(err, 'getMe') };
+    }
+  });
+  // v5.8.1 — Account-wide active people, for the Team time person picker.
+  ipcMain.handle(IPC.BC_LIST_PEOPLE, async () => {
+    try {
+      return { ok: true, data: await basecamp.api.listPeople() };
+    } catch (err) {
+      return { ok: false, error: describeError(err, 'listPeople') };
+    }
+  });
 
   // v5.1.0 — Direct Basecamp time-entry update/delete. Most callers should go
   // through UPDATE_SESSION/DELETE_SESSION which orchestrate local + remote;

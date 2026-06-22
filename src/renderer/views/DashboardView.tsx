@@ -1,5 +1,5 @@
 import React, { useState, useEffect, Suspense, lazy } from 'react';
-import { Users, ClipboardList, Settings, MessageCircle, CalendarDays } from 'lucide-react';
+import { Users, ClipboardList, Settings, MessageCircle, CalendarDays, Clock } from 'lucide-react';
 import { User, AvailabilityStatus, DailyRecord, LicenseState } from '../../shared/types';
 import Avatar from '../components/Avatar';
 import PlanTab from './dashboard/PlanTab';
@@ -11,6 +11,10 @@ import PlanTab from './dashboard/PlanTab';
 const TeamTab = lazy(() => import('./dashboard/TeamTab'));
 const TimesheetTab = lazy(() => import('./dashboard/TimesheetTab'));
 const SettingsTab = lazy(() => import('./dashboard/SettingsTab'));
+// v5.8.0 — Team time tracking surface. Lazy-loaded like the other secondary
+// tabs; nav button only rendered for BC account admins, so non-admins never
+// download the chunk in the first place.
+const TeamTimeTab = lazy(() => import('./dashboard/TeamTimeTab'));
 
 // Lightweight fallback while a tab chunk loads. Centred, low-noise.
 function TabLoading() {
@@ -72,7 +76,7 @@ function getStatusLabel(status: AvailabilityStatus): string {
   }
 }
 
-type Tab = 'plan' | 'team' | 'timesheet' | 'settings';
+type Tab = 'plan' | 'team' | 'timesheet' | 'teamtime' | 'settings';
 
 function formatRevertTime(seconds: number): string {
   const m = Math.floor(seconds / 60);
@@ -83,6 +87,16 @@ function formatRevertTime(seconds: number): string {
 
 export default function DashboardView({ currentUser, peers, timerState, records, statusRevertRemaining, requestedTab, isPro, licenseState, onLicenseStateChange, onRequestedTabHandled, onRefreshRecords, onStatusChange, onUserUpdate, onSignOut }: Props) {
   const [activeTab, setActiveTab] = useState<Tab>('plan');
+  // v5.8.0 — BC account-admin flag. Drives whether the Team time tab nav
+  // button + content are shown. Fetched once on mount via bcGetMe; failures
+  // (not connected, transient) fall back to non-admin (safe default).
+  const [bcAdmin, setBcAdmin] = useState<boolean>(false);
+  useEffect(() => {
+    (window.zenstate as unknown as { bcGetMe?: () => Promise<{ ok: boolean; data?: { admin?: boolean }; error?: string }> })
+      .bcGetMe?.()
+      .then((res) => { if (res?.ok) setBcAdmin(!!res.data?.admin); })
+      .catch(() => { /* non-admin fallback */ });
+  }, []);
 
   useEffect(() => {
     if (!requestedTab) return;
@@ -313,6 +327,15 @@ export default function DashboardView({ currentUser, peers, timerState, records,
           >
             <ClipboardList size={16} /> Timesheet
           </button>
+          {bcAdmin && (
+            <button
+              className={`tab-btn ${activeTab === 'teamtime' ? 'active' : ''}`}
+              onClick={() => setActiveTab('teamtime')}
+              title="Per-person time tracking across pinned projects (admin only)"
+            >
+              <Clock size={16} /> Team time
+            </button>
+          )}
           <button
             className={`tab-btn ${activeTab === 'settings' ? 'active' : ''}`}
             onClick={() => setActiveTab('settings')}
@@ -348,6 +371,11 @@ export default function DashboardView({ currentUser, peers, timerState, records,
               isPro={isPro}
               onRefreshRecords={onRefreshRecords}
             />
+          </Suspense>
+        )}
+        {activeTab === 'teamtime' && bcAdmin && (
+          <Suspense fallback={<TabLoading />}>
+            <TeamTimeTab />
           </Suspense>
         )}
         {activeTab === 'settings' && (

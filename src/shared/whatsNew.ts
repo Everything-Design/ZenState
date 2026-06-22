@@ -20,6 +20,23 @@ export interface ReleaseHighlight {
 
 export const RELEASE_HIGHLIGHTS: ReleaseHighlight[] = [
   {
+    version: '5.8.0',
+    title: "What's new in v5.8.0",
+    intro: 'New Team time tab in the dashboard — pick a teammate, see what they’ve been working on across your pinned projects. Only Basecamp account admins see the tab; everyone else doesn’t even know it exists.',
+    bullets: [
+      'New "Team time" tab in the left dashboard nav. Only visible to people Basecamp lists as account admins.',
+      'Pick a teammate from the dropdown → see their recent timesheet entries with the to-do they were working on, the project it belongs to, and the date / hours.',
+      'Period filter (today / this week / this month / all time) narrows what shows.',
+      'Scope = your pinned projects, so the data set stays predictable. Refresh button pulls fresh entries from Basecamp on demand.',
+      'Live admin-role check on launch via BC’s /my/profile.json — if you stop being an admin, the tab disappears next launch. No setting to bypass.',
+    ],
+    footer: 'Got feedback?',
+    footerLink: {
+      label: 'Drop it in Basecamp',
+      url: 'https://3.basecamp.com/5826042/buckets/38489884/cloud_files/9572235152',
+    },
+  },
+  {
     version: '5.7.5',
     title: "What's new in v5.7.5",
     intro: "Repackaging release — v5.7.4's mac publish died mid-upload to a DNS hiccup, leaving the release entry in a partial state with mismatched shas. v5.7.5 ships cleanly with the same fixes.",

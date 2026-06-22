@@ -77,6 +77,8 @@ const IPC = {
   BC_UPDATE_TIME_ENTRY: 'basecamp:update-time-entry',
   BC_DELETE_TIME_ENTRY: 'basecamp:delete-time-entry',
   BC_GET_PROJECT_TIMESHEET: 'basecamp:get-project-timesheet',
+  BC_GET_ME: 'basecamp:get-me',
+  BC_LIST_PEOPLE: 'basecamp:list-people',
   BC_BACKFILL_TIMESHEET: 'basecamp:backfill-timesheet',
   BC_GET_MY_ASSIGNMENTS: 'basecamp:get-my-assignments',
   BC_GET_MY_ASSIGNMENTS_DUE: 'basecamp:get-my-assignments-due',
@@ -198,6 +200,8 @@ contextBridge.exposeInMainWorld('zenstate', {
   bcUpdateTimeEntry: (data: { entryId: number; date?: string; hours?: string; description?: string; personId?: number }) => ipcRenderer.invoke(IPC.BC_UPDATE_TIME_ENTRY, data),
   bcDeleteTimeEntry: (entryId: number) => ipcRenderer.invoke(IPC.BC_DELETE_TIME_ENTRY, { entryId }),
   bcGetProjectTimesheet: (projectId: number) => ipcRenderer.invoke(IPC.BC_GET_PROJECT_TIMESHEET, { projectId }),
+  bcGetMe: () => ipcRenderer.invoke(IPC.BC_GET_ME),
+  bcListPeople: () => ipcRenderer.invoke(IPC.BC_LIST_PEOPLE),
   bcBackfillTimesheet: () => ipcRenderer.invoke(IPC.BC_BACKFILL_TIMESHEET),
   // v5.1.0 — new pin-UX endpoints
   bcGetMyAssignments: () => ipcRenderer.invoke(IPC.BC_GET_MY_ASSIGNMENTS),

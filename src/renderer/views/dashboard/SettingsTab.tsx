@@ -813,6 +813,7 @@ export default function SettingsTab({ currentUser, peers, isPro, licenseState, o
             </>
           )}
 
+
           {/* v5.7.1 — Animate avatars from teammates */}
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
             <span style={{ fontSize: 13, flex: 1 }}>🎞️ Animate teammates&rsquo; GIF avatars</span>

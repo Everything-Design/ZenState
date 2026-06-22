@@ -537,6 +537,52 @@ export class BasecampApi {
     }));
   }
 
+  // v5.8.0 — Authenticated-user profile. Returns the same person shape as
+  // listProjectMembers; the `admin` field reflects BC account-admin status,
+  // which gates the Team time dashboard tab. Called on dashboard mount + cached.
+  //
+  // v5.8.1 — Logs the raw response so we can verify the admin-field shape
+  // against real BC accounts. BC's docs at github.com/basecamp/bc3-api list
+  // `admin` as a boolean on the Person object; if a deployment ever sees
+  // the field missing/renamed, this trace surfaces it.
+  async getMe(): Promise<BasecampPerson> {
+    const p = await this.requestJson<RawPerson>(`${this.accountBase()}/my/profile.json`);
+    console.log('[bc.getMe] raw response:', JSON.stringify({
+      id: p.id, name: p.name, admin: p.admin, client: p.client,
+      can_access_timesheet: p.can_access_timesheet,
+    }));
+    return {
+      id: p.id,
+      name: p.name,
+      emailAddress: p.email_address,
+      avatarUrl: p.avatar_url,
+      title: p.title,
+      admin: p.admin ?? false,
+      client: p.client ?? false,
+      canAccessTimesheet: p.can_access_timesheet ?? false,
+    };
+  }
+
+  // v5.8.1 — Account-wide people. Used by the Team time tab as the person
+  // picker source so EVERY teammate appears, not just ones who've logged
+  // time on a pinned project. BC3 docs: GET /people.json returns all people
+  // in the account (BC's API doesn't return deactivated users here, so we
+  // don't need a separate "active" filter). Renderer filters out clients
+  // since they don't appear on team timesheets.
+  async listPeople(): Promise<BasecampPerson[]> {
+    const raw = await this.paginate<RawPerson>(`${this.accountBase()}/people.json`);
+    return raw.map((p) => ({
+      id: p.id,
+      name: p.name,
+      emailAddress: p.email_address,
+      avatarUrl: p.avatar_url,
+      title: p.title,
+      admin: p.admin ?? false,
+      client: p.client ?? false,
+      canAccessTimesheet: p.can_access_timesheet ?? false,
+    }));
+  }
+
   // v5.2 — Project members. Used by the multi-person time-entry picker to
   // show who the user can post on behalf of. `canAccessTimesheet` filters
   // clients out (they can't have timesheet entries). The Basecamp API
