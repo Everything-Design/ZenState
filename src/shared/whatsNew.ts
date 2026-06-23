@@ -20,6 +20,21 @@ export interface ReleaseHighlight {
 
 export const RELEASE_HIGHLIGHTS: ReleaseHighlight[] = [
   {
+    version: '5.8.1',
+    title: "What's new in v5.8.1",
+    intro: 'Intel Mac support — ZenState now ships an x64 build alongside the existing Apple Silicon (arm64) build. If you’re on a 2019-era MacBook Pro or earlier (Intel), the auto-updater will start pulling the right binary for your chip on the next check.',
+    bullets: [
+      'New x64 build target for Intel Macs. The dmg + zip + blockmap are produced for both architectures every release.',
+      'Apple Silicon users see no change — auto-updater picks the matching binary based on your chip.',
+      'No code changes vs v5.8.0. Pure build-config expansion.',
+    ],
+    footer: 'Got feedback?',
+    footerLink: {
+      label: 'Drop it in Basecamp',
+      url: 'https://3.basecamp.com/5826042/buckets/38489884/cloud_files/9572235152',
+    },
+  },
+  {
     version: '5.8.0',
     title: "What's new in v5.8.0",
     intro: 'New Team time tab in the dashboard — pick a teammate, see what they’ve been working on across your pinned projects. Only Basecamp account admins see the tab; everyone else doesn’t even know it exists.',
