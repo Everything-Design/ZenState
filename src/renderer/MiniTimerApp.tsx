@@ -503,6 +503,34 @@ export default function MiniTimerApp() {
             />
           </div>
 
+          {/* v5.8.1 — "+ Pin another to-do" promoted to the top of the
+              switchable area (below the search box when one's shown,
+              above the empty-state copy when nothing's pinned). Long
+              pinned lists previously made it a scroll-down chore to
+              add a new task. Same change as the Plan tab. */}
+          <button
+            onClick={() => window.zenstate.openDashboardAndPin()}
+            style={{
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              gap: 6,
+              width: 'calc(100% - 24px)',
+              margin: '6px 12px 4px',
+              padding: '6px 12px',
+              background: 'transparent',
+              border: '1px dashed rgba(255,255,255,0.12)',
+              borderRadius: 6,
+              color: 'rgba(230,237,243,0.65)',
+              fontFamily: 'inherit',
+              fontSize: 11,
+              cursor: 'pointer',
+              transition: 'color 120ms ease, border-color 120ms ease',
+            }}
+            onMouseEnter={(e) => { e.currentTarget.style.color = '#e6edf3'; e.currentTarget.style.borderColor = 'rgba(255,255,255,0.22)'; }}
+            onMouseLeave={(e) => { e.currentTarget.style.color = 'rgba(230,237,243,0.65)'; e.currentTarget.style.borderColor = 'rgba(255,255,255,0.12)'; }}
+          >
+            + Pin another to-do
+          </button>
+
           {switchablePinned.length === 0 ? (
             <div style={{ padding: '14px 12px', fontSize: 11, color: 'rgba(230,237,243,0.55)', textAlign: 'center', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6 }}>
               <Briefcase size={11} /> Nothing else pinned. Plan a few in Today.
@@ -618,33 +646,6 @@ export default function MiniTimerApp() {
               })()}
             </>
           )}
-
-          {/* Quick-pin shortcut — keeps the user in flow when a new task
-              comes in mid-session. Opens the dashboard's Plan tab with the
-              picker auto-open; once pinned, the new task appears in this
-              list (today:changed event), and the user can close the
-              dashboard and resume from the pill. */}
-          <button
-            onClick={() => window.zenstate.openDashboardAndPin()}
-            style={{
-              display: 'flex', alignItems: 'center', justifyContent: 'center',
-              gap: 6,
-              width: '100%',
-              margin: '8px 0 4px',
-              padding: '8px 12px',
-              background: 'transparent',
-              border: 'none',
-              color: 'rgba(230,237,243,0.55)',
-              fontFamily: 'inherit',
-              fontSize: 11,
-              cursor: 'pointer',
-              transition: 'color 120ms ease',
-            }}
-            onMouseEnter={(e) => { e.currentTarget.style.color = '#e6edf3'; }}
-            onMouseLeave={(e) => { e.currentTarget.style.color = 'rgba(230,237,243,0.55)'; }}
-          >
-            + Pin another to-do
-          </button>
         </div>
       )}
     </div>

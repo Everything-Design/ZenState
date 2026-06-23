@@ -540,6 +540,88 @@ export default function TodayTab({ timerState, records, onOpenSettings, onRefres
               </div>
             )}
 
+            {/* v5.8.1 — "+ Pin another to-do" + "+ New folder" moved to the
+                top of the list (right under the filter search bar). With
+                many pinned items + folders, having to scroll all the way
+                down to add one more is friction; keep it within thumb-reach
+                at the top. The inline new-folder input swaps in over both
+                buttons; Enter saves, Escape / blur cancels. */}
+            {creatingFolder ? (
+              <div style={{ display: 'flex', gap: 'var(--space-2)' }}>
+                <input
+                  ref={newFolderInputRef}
+                  value={newFolderName}
+                  onChange={(e) => setNewFolderName(e.target.value)}
+                  onBlur={commitNewFolder}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') { e.preventDefault(); commitNewFolder(); }
+                    if (e.key === 'Escape') { setCreatingFolder(false); setNewFolderName(''); }
+                  }}
+                  placeholder="Folder name"
+                  maxLength={60}
+                  aria-label="New folder name"
+                  style={{
+                    flex: 1,
+                    padding: '10px var(--space-3)',
+                    fontSize: 'var(--text-sm)',
+                    background: 'var(--zen-tertiary-bg)',
+                    border: '1px solid var(--zen-primary)',
+                    borderRadius: 'var(--radius-md)',
+                    color: 'var(--zen-text)',
+                    outline: 'none',
+                    fontFamily: 'inherit',
+                  }}
+                />
+              </div>
+            ) : (
+              <div style={{ display: 'flex', gap: 'var(--space-2)' }}>
+                <button
+                  onClick={() => setPickerOpen(true)}
+                  style={{
+                    flex: 1,
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    gap: 'var(--space-2)',
+                    padding: '10px var(--space-3)',
+                    borderRadius: 'var(--radius-md)',
+                    background: 'transparent',
+                    border: '1px dashed var(--zen-divider)',
+                    color: 'var(--zen-secondary-text)',
+                    fontSize: 'var(--text-sm)',
+                    fontWeight: 500,
+                    cursor: 'pointer',
+                    fontFamily: 'inherit',
+                    transition: 'background var(--duration-quick) var(--ease-standard), color var(--duration-quick) var(--ease-standard), border-color var(--duration-quick) var(--ease-standard)',
+                  }}
+                  onMouseEnter={(e) => { e.currentTarget.style.background = 'var(--zen-hover)'; e.currentTarget.style.color = 'var(--zen-text)'; e.currentTarget.style.borderColor = 'rgba(255,255,255,0.18)'; }}
+                  onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = 'var(--zen-secondary-text)'; e.currentTarget.style.borderColor = 'var(--zen-divider)'; }}
+                >
+                  <Plus size={14} /> Pin another to-do
+                </button>
+                <button
+                  onClick={() => { setCreatingFolder(true); setNewFolderName(''); }}
+                  title="Create a new folder to organise your pinned to-dos"
+                  style={{
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    gap: 'var(--space-2)',
+                    padding: '10px var(--space-3)',
+                    borderRadius: 'var(--radius-md)',
+                    background: 'transparent',
+                    border: '1px dashed var(--zen-divider)',
+                    color: 'var(--zen-secondary-text)',
+                    fontSize: 'var(--text-sm)',
+                    fontWeight: 500,
+                    cursor: 'pointer',
+                    fontFamily: 'inherit',
+                    transition: 'background var(--duration-quick) var(--ease-standard), color var(--duration-quick) var(--ease-standard), border-color var(--duration-quick) var(--ease-standard)',
+                  }}
+                  onMouseEnter={(e) => { e.currentTarget.style.background = 'var(--zen-hover)'; e.currentTarget.style.color = 'var(--zen-text)'; e.currentTarget.style.borderColor = 'rgba(255,255,255,0.18)'; }}
+                  onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = 'var(--zen-secondary-text)'; e.currentTarget.style.borderColor = 'var(--zen-divider)'; }}
+                >
+                  <FolderPlus size={14} /> New folder
+                </button>
+              </div>
+            )}
+
             {sortedItems.length === 0 ? (
               <div style={{ textAlign: 'center', padding: 'var(--space-6) 0', color: 'var(--zen-tertiary-text)', fontSize: 'var(--text-sm)', border: '1px dashed var(--zen-divider)', borderRadius: 'var(--radius-md)' }}>
                 No tasks match "{todoSearchText}"
@@ -655,83 +737,6 @@ export default function TodayTab({ timerState, records, onOpenSettings, onRefres
                   })}
                 </SortableContext>
               </DndContext>
-            )}
-            {/* v5.7.0 — Inline "+ New folder" input swaps in over the buttons
-                row when active. Enter saves, Escape / blur cancels. */}
-            {creatingFolder ? (
-              <div style={{ display: 'flex', gap: 'var(--space-2)' }}>
-                <input
-                  ref={newFolderInputRef}
-                  value={newFolderName}
-                  onChange={(e) => setNewFolderName(e.target.value)}
-                  onBlur={commitNewFolder}
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter') { e.preventDefault(); commitNewFolder(); }
-                    if (e.key === 'Escape') { setCreatingFolder(false); setNewFolderName(''); }
-                  }}
-                  placeholder="Folder name"
-                  maxLength={60}
-                  aria-label="New folder name"
-                  style={{
-                    flex: 1,
-                    padding: '10px var(--space-3)',
-                    fontSize: 'var(--text-sm)',
-                    background: 'var(--zen-tertiary-bg)',
-                    border: '1px solid var(--zen-primary)',
-                    borderRadius: 'var(--radius-md)',
-                    color: 'var(--zen-text)',
-                    outline: 'none',
-                    fontFamily: 'inherit',
-                  }}
-                />
-              </div>
-            ) : (
-              <div style={{ display: 'flex', gap: 'var(--space-2)' }}>
-                <button
-                  onClick={() => setPickerOpen(true)}
-                  style={{
-                    flex: 1,
-                    display: 'flex', alignItems: 'center', justifyContent: 'center',
-                    gap: 'var(--space-2)',
-                    padding: '10px var(--space-3)',
-                    borderRadius: 'var(--radius-md)',
-                    background: 'transparent',
-                    border: '1px dashed var(--zen-divider)',
-                    color: 'var(--zen-secondary-text)',
-                    fontSize: 'var(--text-sm)',
-                    fontWeight: 500,
-                    cursor: 'pointer',
-                    fontFamily: 'inherit',
-                    transition: 'background var(--duration-quick) var(--ease-standard), color var(--duration-quick) var(--ease-standard), border-color var(--duration-quick) var(--ease-standard)',
-                  }}
-                  onMouseEnter={(e) => { e.currentTarget.style.background = 'var(--zen-hover)'; e.currentTarget.style.color = 'var(--zen-text)'; e.currentTarget.style.borderColor = 'rgba(255,255,255,0.18)'; }}
-                  onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = 'var(--zen-secondary-text)'; e.currentTarget.style.borderColor = 'var(--zen-divider)'; }}
-                >
-                  <Plus size={14} /> Pin another to-do
-                </button>
-                <button
-                  onClick={() => { setCreatingFolder(true); setNewFolderName(''); }}
-                  title="Create a new folder to organise your pinned to-dos"
-                  style={{
-                    display: 'flex', alignItems: 'center', justifyContent: 'center',
-                    gap: 'var(--space-2)',
-                    padding: '10px var(--space-3)',
-                    borderRadius: 'var(--radius-md)',
-                    background: 'transparent',
-                    border: '1px dashed var(--zen-divider)',
-                    color: 'var(--zen-secondary-text)',
-                    fontSize: 'var(--text-sm)',
-                    fontWeight: 500,
-                    cursor: 'pointer',
-                    fontFamily: 'inherit',
-                    transition: 'background var(--duration-quick) var(--ease-standard), color var(--duration-quick) var(--ease-standard), border-color var(--duration-quick) var(--ease-standard)',
-                  }}
-                  onMouseEnter={(e) => { e.currentTarget.style.background = 'var(--zen-hover)'; e.currentTarget.style.color = 'var(--zen-text)'; e.currentTarget.style.borderColor = 'rgba(255,255,255,0.18)'; }}
-                  onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = 'var(--zen-secondary-text)'; e.currentTarget.style.borderColor = 'var(--zen-divider)'; }}
-                >
-                  <FolderPlus size={14} /> New folder
-                </button>
-              </div>
             )}
           </div>
         )}
