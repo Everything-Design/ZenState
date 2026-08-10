@@ -1014,6 +1014,14 @@ function handleIncomingPing(data: { senderId: string; senderName: string; messag
 // ── Timer Logic ────────────────────────────────────────────────
 
 function startTimer(taskLabel: string, category?: string, targetDuration?: number, basecampLink?: { accountId: number; projectId: number; todoId: number; todoListId?: number; projectName?: string }) {
+  // v5.8.2 — Plan tab and popover called startTimer without stopping first,
+  // discarding the running session. Mirror the pill switcher: save outgoing
+  // time (local + Basecamp) before starting the new task.
+  const switchingTask = timerIsRunning || timerIsPaused;
+  if (switchingTask) {
+    stopTimer();
+  }
+
   // v5.5.1 (CLICK-PATH-004) — Clear any stale timesheet-confirm state from a
   // previous session that was stopped but never confirmed/discarded. Without
   // this, `pendingTimesheetEntry` lingered through a fresh startTimer and a
@@ -1022,13 +1030,17 @@ function startTimer(taskLabel: string, category?: string, targetDuration?: numbe
   // pending entry; the user might dismiss the alert via the OS close button
   // (no Post/Discard) — that path nulls the alert ref but not the pending
   // entry. Belt-and-suspenders cleanup here covers that gap.
-  if (pendingTimesheetEntry) {
-    pendingTimesheetEntry = null;
+  // Skip when switchingTask — stopTimer above may have just opened confirm
+  // for the outgoing session.
+  if (!switchingTask) {
+    if (pendingTimesheetEntry) {
+      pendingTimesheetEntry = null;
+    }
+    if (timesheetConfirmAlertWin && !timesheetConfirmAlertWin.isDestroyed()) {
+      timesheetConfirmAlertWin.destroy();
+    }
+    timesheetConfirmAlertWin = null;
   }
-  if (timesheetConfirmAlertWin && !timesheetConfirmAlertWin.isDestroyed()) {
-    timesheetConfirmAlertWin.destroy();
-  }
-  timesheetConfirmAlertWin = null;
 
   timerTaskLabel = taskLabel;
   timerCategory = category;

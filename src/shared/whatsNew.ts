@@ -20,6 +20,20 @@ export interface ReleaseHighlight {
 
 export const RELEASE_HIGHLIGHTS: ReleaseHighlight[] = [
   {
+    version: '5.8.2',
+    title: "What's new in v5.8.2",
+    intro: 'Starting a different task from the Plan tab or popover now saves your current timer first — same behavior as switching tasks in the floating pill.',
+    bullets: [
+      'Click Start on another pinned to-do while a timer is running: the outgoing session is saved to your timesheet and posted to Basecamp (or opens the confirm popup) before the new timer starts.',
+      "Fixes a bug where the previous task's recorded time was silently discarded when starting from Plan instead of the pill.",
+    ],
+    footer: 'Got feedback?',
+    footerLink: {
+      label: 'Drop it in Basecamp',
+      url: 'https://3.basecamp.com/5826042/buckets/38489884/cloud_files/9572235152',
+    },
+  },
+  {
     version: '5.8.1',
     title: "What's new in v5.8.1",
     intro: 'Intel Mac support — ZenState now ships an x64 build alongside the existing Apple Silicon (arm64) build. If you’re on a 2019-era MacBook Pro or earlier (Intel), the auto-updater will start pulling the right binary for your chip on the next check.',
