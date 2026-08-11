@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useState, useCallback } from 'react';
 import { Clock, RefreshCw, X, Star } from 'lucide-react';
 import { BasecampTimesheetEntry, BasecampPerson, BasecampProject, AppSettings } from '../../../shared/types';
+import { todayDateStr, dateStr, startOfWeek, monthPrefix as monthPrefixOfDate, formatDateLabel } from '../../utils/format';
 
 // v5.8.0 — Team time tracking tab.
 // v5.8.1 — Account-wide scope: picker sources from /people/active.json (all
@@ -31,28 +32,10 @@ interface EntryWithProject extends BasecampTimesheetEntry {
   projectName: string;
 }
 
-function todayDateStr(): string {
-  const d = new Date();
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
-}
-
-function startOfWeekStr(): string {
-  const d = new Date();
-  const day = d.getDay();
-  d.setDate(d.getDate() - day);
-  d.setHours(0, 0, 0, 0);
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
-}
-
-function monthPrefix(): string {
-  const d = new Date();
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
-}
-
-function formatDate(yyyymmdd: string): string {
-  const d = new Date(yyyymmdd + 'T00:00:00');
-  return d.toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' });
-}
+const startOfWeekStr = () => dateStr(startOfWeek());
+const monthPrefix = () => monthPrefixOfDate();
+const formatDate = (yyyymmdd: string) =>
+  formatDateLabel(yyyymmdd, { weekday: 'short', month: 'short', day: 'numeric' });
 
 function formatHours(h: string | number): string {
   const n = typeof h === 'string' ? parseFloat(h) : h;

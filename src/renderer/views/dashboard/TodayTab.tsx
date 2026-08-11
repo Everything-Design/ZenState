@@ -38,6 +38,7 @@ const zs = window.zenstate as unknown as {
 };
 import AddSessionModal from '../../components/AddSessionModal';
 import ProgressRing, { formatRingLabel } from '../../components/ProgressRing';
+import { formatHM, todayDateStr } from '../../utils/format';
 
 interface TimerState {
   elapsed: number;
@@ -55,19 +56,6 @@ interface Props {
 }
 
 // ── Helpers ───────────────────────────────────────────────────────
-
-function formatHM(seconds: number): string {
-  const h = Math.floor(seconds / 3600);
-  const m = Math.floor((seconds % 3600) / 60);
-  if (h > 0 && m > 0) return `${h}h ${m}m`;
-  if (h > 0) return `${h}h`;
-  return `${m}m`;
-}
-
-function todayDateStr(): string {
-  const d = new Date();
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
-}
 
 function dayHeader(): string {
   return new Date().toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric' });

@@ -1,6 +1,7 @@
 import React, { useEffect, useState, useRef, useCallback } from 'react';
 import { Pause, Play, Square, ChevronDown, Briefcase, StickyNote, Video, Search, X } from 'lucide-react';
 import { IPC, TodayPlan, PinnedTodo, AppSettings } from '../shared/types';
+import { formatHMS } from './utils/format';
 
 interface TimerState {
   elapsed: number;
@@ -14,14 +15,6 @@ const COMPACT_W = 240;
 const COMPACT_H = 36; // v5.3.1 — reverted from 44; project name moved to expanded panel
 const EXPANDED_W = 300;
 // Height calculated dynamically: header (52) + items (each 50) + padding (12).
-
-function formatHMS(seconds: number): string {
-  const h = Math.floor(seconds / 3600);
-  const m = Math.floor((seconds % 3600) / 60);
-  const s = Math.floor(seconds % 60);
-  if (h > 0) return `${h}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
-  return `${m}:${String(s).padStart(2, '0')}`;
-}
 
 // Notes section is fixed height — we use this in the dynamic resize calc below.
 const NOTES_SECTION_H = 110;

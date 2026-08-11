@@ -10,12 +10,6 @@ interface Props {
 
 type Mode = 'send' | 'manage-groups' | 'edit-group';
 
-// Generate a uuid without pulling in a dep — we already use crypto.randomUUID
-// in the renderer environment (it's available on browser globals in modern Electron).
-function uuid(): string {
-  return (typeof crypto !== 'undefined' && crypto.randomUUID) ? crypto.randomUUID() : Math.random().toString(36).slice(2);
-}
-
 export default function SendPingSheet({ peers, onClose }: Props) {
   const [mode, setMode] = useState<Mode>('send');
   const [message, setMessage] = useState('');
@@ -82,7 +76,7 @@ export default function SendPingSheet({ peers, onClose }: Props) {
 
   // ── Manage groups ──
   const handleNewGroup = () => {
-    setEditingGroup({ id: uuid(), name: '', memberIds: [] });
+    setEditingGroup({ id: crypto.randomUUID(), name: '', memberIds: [] });
     setMode('edit-group');
   };
 

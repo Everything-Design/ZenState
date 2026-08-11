@@ -2,6 +2,8 @@ import React, { useState, useEffect, Suspense, lazy } from 'react';
 import { Users, ClipboardList, Settings, MessageCircle, CalendarDays, Clock } from 'lucide-react';
 import { User, AvailabilityStatus, DailyRecord, LicenseState } from '../../shared/types';
 import Avatar from '../components/Avatar';
+import { formatRevertTime } from '../utils/format';
+import { getStatusColor, getStatusLabel } from '../utils/status';
 import PlanTab from './dashboard/PlanTab';
 
 // v5.6.0 — Lazy-load secondary tabs so the dashboard's initial bundle ships
@@ -58,32 +60,7 @@ const REVERT_OPTIONS = [
   { label: 'None', seconds: 0 },
 ];
 
-function getStatusColor(status: AvailabilityStatus): string {
-  switch (status) {
-    case AvailabilityStatus.Available: return 'var(--status-available)';
-    case AvailabilityStatus.Occupied: return 'var(--status-occupied)';
-    case AvailabilityStatus.Focused: return 'var(--status-focused)';
-    default: return 'var(--status-offline)';
-  }
-}
-
-function getStatusLabel(status: AvailabilityStatus): string {
-  switch (status) {
-    case AvailabilityStatus.Available: return 'Available';
-    case AvailabilityStatus.Occupied: return 'Occupied';
-    case AvailabilityStatus.Focused: return 'Focus Mode';
-    default: return 'Offline';
-  }
-}
-
 type Tab = 'plan' | 'team' | 'timesheet' | 'teamtime' | 'settings';
-
-function formatRevertTime(seconds: number): string {
-  const m = Math.floor(seconds / 60);
-  const s = seconds % 60;
-  if (m > 0) return `${m}:${String(s).padStart(2, '0')}`;
-  return `${s}s`;
-}
 
 export default function DashboardView({ currentUser, peers, timerState, records, statusRevertRemaining, requestedTab, isPro, licenseState, onLicenseStateChange, onRequestedTabHandled, onRefreshRecords, onStatusChange, onUserUpdate, onSignOut }: Props) {
   const [activeTab, setActiveTab] = useState<Tab>('plan');

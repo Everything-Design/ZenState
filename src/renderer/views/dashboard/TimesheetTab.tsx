@@ -16,6 +16,7 @@ const plainCategoryTagStyle: React.CSSProperties = {
   color: 'var(--zen-secondary-text)',
 };
 import { ProBadge } from '../../components/ProGate';
+import { formatHM, todayDateStr, monthPrefix, startOfWeek, formatDateLabel } from '../../utils/format';
 
 interface Props {
   records: DailyRecord[];
@@ -25,27 +26,13 @@ interface Props {
 
 type StatPeriod = 'all' | 'month' | 'week' | 'today';
 
+// formatTime: always-padded H:MM:SS (TimesheetTab session rows need the leading
+// hour even for sub-hour sessions for column alignment). Keep local.
 function formatTime(seconds: number): string {
   const h = Math.floor(seconds / 3600);
   const m = Math.floor((seconds % 3600) / 60);
   const s = Math.floor(seconds % 60);
   return `${h}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
-}
-
-function formatDuration(seconds: number): string {
-  const h = Math.floor(seconds / 3600);
-  const m = Math.floor((seconds % 3600) / 60);
-  if (h > 0) return `${h}h ${m}m`;
-  return `${m}m`;
-}
-
-function getTodayDateStr(): string {
-  const d = new Date();
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
-}
-
-function getMonthStr(date: Date): string {
-  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
 }
 
 function getDaysInMonth(year: number, month: number): number {
@@ -54,19 +41,6 @@ function getDaysInMonth(year: number, month: number): number {
 
 function getFirstDayOfWeek(year: number, month: number): number {
   return new Date(year, month, 1).getDay();
-}
-
-function getStartOfWeek(): Date {
-  const d = new Date();
-  const day = d.getDay();
-  d.setDate(d.getDate() - day);
-  d.setHours(0, 0, 0, 0);
-  return d;
-}
-
-function formatDateLabel(dateStr: string): string {
-  const d = new Date(dateStr + 'T00:00:00');
-  return d.toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric' });
 }
 
 // IPC response shapes returned by main-process handlers (v5.1.0+)
@@ -141,9 +115,9 @@ export default function TimesheetTab({ records, isPro, onRefreshRecords }: Props
 
   // Filter records by period
   const filteredRecords = useMemo(() => {
-    const today = getTodayDateStr();
-    const weekStart = getStartOfWeek();
-    const monthStr = getMonthStr(new Date());
+    const today = todayDateStr();
+    const weekStart = startOfWeek();
+    const monthStr = monthPrefix(new Date());
 
     switch (statPeriod) {
       case 'today':
@@ -181,7 +155,7 @@ export default function TimesheetTab({ records, isPro, onRefreshRecords }: Props
 
   // Today's data
   const todayRecord = useMemo(() => {
-    const today = getTodayDateStr();
+    const today = todayDateStr();
     return records.find((r) => r.date.startsWith(today)) || null;
   }, [records]);
 
@@ -206,7 +180,7 @@ export default function TimesheetTab({ records, isPro, onRefreshRecords }: Props
   const calMonth = calendarMonth.getMonth();
   const daysInMonth = getDaysInMonth(calYear, calMonth);
   const firstDay = getFirstDayOfWeek(calYear, calMonth);
-  const todayStr = getTodayDateStr();
+  const todayStr = todayDateStr();
 
   const calendarRecordMap = useMemo(() => {
     const map: Record<string, DailyRecord> = {};
@@ -312,7 +286,7 @@ export default function TimesheetTab({ records, isPro, onRefreshRecords }: Props
     const a = document.createElement('a');
     const periodLabel = statPeriod === 'all' ? 'all-time' : statPeriod;
     a.href = url;
-    a.download = `zenstate-timesheet-${periodLabel}-${getTodayDateStr()}.csv`;
+    a.download = `zenstate-timesheet-${periodLabel}-${todayDateStr()}.csv`;
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);
@@ -405,7 +379,7 @@ export default function TimesheetTab({ records, isPro, onRefreshRecords }: Props
             textAlign: 'center',
           }}>
             <div style={{ fontSize: 20, fontWeight: 700, color: 'var(--zen-text)' }}>
-              {formatDuration(stats.avgSession)}
+              {formatHM(stats.avgSession)}
             </div>
             <div style={{ fontSize: 10, color: 'var(--zen-secondary-text)', marginTop: 4 }}>Avg Session</div>
           </div>
@@ -419,7 +393,7 @@ export default function TimesheetTab({ records, isPro, onRefreshRecords }: Props
           Today's Sessions
           {todayRecord && (
             <span style={{ fontSize: 11, fontWeight: 400, color: 'var(--zen-secondary-text)' }}>
-              {formatDuration(todayRecord.totalFocusTime)} total · {todaySessions.length} sessions
+              {formatHM(todayRecord.totalFocusTime)} total · {todaySessions.length} sessions
             </span>
           )}
         </div>
@@ -508,12 +482,12 @@ export default function TimesheetTab({ records, isPro, onRefreshRecords }: Props
                 alignItems: 'center',
                 gap: 4,
               }}>
-                {formatDuration(session.duration)}
+                {formatHM(session.duration)}
               </div>
               <div className="session-actions">
                 <button
                   className="session-action-btn"
-                  onClick={() => setEditingSession({ session, date: getTodayDateStr() })}
+                  onClick={() => setEditingSession({ session, date: todayDateStr() })}
                   title="Edit"
                 >
                   <Pencil size={13} />
@@ -655,7 +629,7 @@ export default function TimesheetTab({ records, isPro, onRefreshRecords }: Props
           {selectedRecord ? (
             <>
               <div style={{ fontSize: 12, color: 'var(--zen-secondary-text)', marginBottom: 12 }}>
-                {formatDuration(selectedRecord.totalFocusTime)} total · {selectedRecord.sessions.length} sessions
+                {formatHM(selectedRecord.totalFocusTime)} total · {selectedRecord.sessions.length} sessions
               </div>
               {[...selectedRecord.sessions].reverse().map((session) => (
                 <div key={session.id} className="session-row">
@@ -735,7 +709,7 @@ export default function TimesheetTab({ records, isPro, onRefreshRecords }: Props
                     alignItems: 'center',
                     gap: 4,
                   }}>
-                    {formatDuration(session.duration)}
+                    {formatHM(session.duration)}
                   </div>
                   <div className="session-actions">
                     <button
@@ -799,7 +773,7 @@ export default function TimesheetTab({ records, isPro, onRefreshRecords }: Props
                 className="btn btn-danger"
                 onClick={() => {
                   const { sessionId, session } = deleteConfirm;
-                  const date = selectedDate ?? getTodayDateStr();
+                  const date = selectedDate ?? todayDateStr();
                   handleDeleteSession(sessionId, date, session);
                 }}
               >

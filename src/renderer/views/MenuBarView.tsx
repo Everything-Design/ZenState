@@ -4,6 +4,8 @@ import { User, AvailabilityStatus, IPC, LicenseState, TodayPlan, PinnedTodo, Rec
 import SendPingSheet from '../components/SendPingSheet';
 import NotificationsPanel from '../components/NotificationsPanel';
 import Avatar from '../components/Avatar';
+import { formatHM, formatHMS, formatRevertTime, formatRelative } from '../utils/format';
+import { getStatusColor } from '../utils/status';
 // v5.7.0 — DnD reorder in the popover too (matches Plan tab). Same single-flat
 // SortableContext pattern: folder header IDs interleaved with item IDs.
 import {
@@ -58,53 +60,10 @@ interface Props {
   onOpenSettings?: () => void;
 }
 
-function formatTime(seconds: number): string {
-  const h = Math.floor(seconds / 3600);
-  const m = Math.floor((seconds % 3600) / 60);
-  const s = Math.floor(seconds % 60);
-  if (h > 0) return `${h}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
-  return `${m}:${String(s).padStart(2, '0')}`;
-}
-
-function formatDuration(seconds: number): string {
-  const h = Math.floor(seconds / 3600);
-  const m = Math.floor((seconds % 3600) / 60);
-  if (h > 0 && m > 0) return `${h}h ${m}m`;
-  if (h > 0) return `${h}h`;
-  return `${m}m`;
-}
-
-function getStatusColor(status: AvailabilityStatus): string {
-  switch (status) {
-    case AvailabilityStatus.Available: return 'var(--status-available)';
-    case AvailabilityStatus.Occupied: return 'var(--status-occupied)';
-    case AvailabilityStatus.Focused: return 'var(--status-focused)';
-    default: return 'var(--status-offline)';
-  }
-}
-
 function getEndOfDay(): string {
   const d = new Date();
   d.setHours(23, 59, 59, 999);
   return d.toISOString();
-}
-
-function formatRevertTime(seconds: number): string {
-  const m = Math.floor(seconds / 60);
-  const s = seconds % 60;
-  if (m > 0) return `${m}:${String(s).padStart(2, '0')}`;
-  return `${s}s`;
-}
-
-// "5m ago", "1h ago", "yesterday" — for short relative timestamps in the
-// recent-pings list. Anything older than 24h shouldn't appear (TTL cleanup
-// in main process), but defensive fallback included.
-function formatRelative(iso: string): string {
-  const ago = (Date.now() - new Date(iso).getTime()) / 1000;
-  if (ago < 60) return 'just now';
-  if (ago < 3600) return `${Math.round(ago / 60)}m ago`;
-  if (ago < 86400) return `${Math.round(ago / 3600)}h ago`;
-  return new Date(iso).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
 }
 
 export default function MenuBarView({ currentUser, peers, timerState, statusRevertRemaining, isPro, onStatusChange, onUserUpdate, onOpenSettings }: Props) {
@@ -592,7 +551,7 @@ export default function MenuBarView({ currentUser, peers, timerState, statusReve
               {timerState.targetDuration ? <Hourglass size={11} /> : <Timer size={11} />} {timerState.taskLabel}
             </span>
             <div className={`timer-time ${timerState.isPaused ? 'paused' : ''}`} style={{ fontSize: 14, flexShrink: 0 }}>
-              {timerState.targetDuration ? formatTime(timerState.remaining ?? 0) : formatTime(timerState.elapsed)}
+              {timerState.targetDuration ? formatHMS(timerState.remaining ?? 0) : formatHMS(timerState.elapsed)}
             </div>
             {timerState.isPaused ? (
               <button className="btn btn-primary" style={{ fontSize: 10, padding: '2px 6px', flexShrink: 0 }} onClick={() => window.zenstate.resumeTimer()}>

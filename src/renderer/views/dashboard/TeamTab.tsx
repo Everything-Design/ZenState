@@ -3,35 +3,12 @@ import { Megaphone, X } from 'lucide-react';
 import { User, AvailabilityStatus, IPC, ReceivedPing } from '../../../shared/types';
 import SendPingSheet from '../../components/SendPingSheet';
 import Avatar from '../../components/Avatar';
+import { formatHM } from '../../utils/format';
+import { getStatusColor, getStatusLabel } from '../../utils/status';
 
 interface Props {
   currentUser: User;
   peers: User[];
-}
-
-function getStatusColor(status: AvailabilityStatus): string {
-  switch (status) {
-    case AvailabilityStatus.Available: return 'var(--status-available)';
-    case AvailabilityStatus.Occupied: return 'var(--status-occupied)';
-    case AvailabilityStatus.Focused: return 'var(--status-focused)';
-    default: return 'var(--status-offline)';
-  }
-}
-
-function getStatusLabel(status: AvailabilityStatus): string {
-  switch (status) {
-    case AvailabilityStatus.Available: return 'Available';
-    case AvailabilityStatus.Occupied: return 'Occupied';
-    case AvailabilityStatus.Focused: return 'Focus Mode';
-    default: return 'Offline';
-  }
-}
-
-function formatDuration(seconds: number): string {
-  const h = Math.floor(seconds / 3600);
-  const m = Math.floor((seconds % 3600) / 60);
-  if (h > 0) return `${h}h ${m}m`;
-  return `${m}m`;
 }
 
 export default function TeamTab({ currentUser, peers }: Props) {
@@ -325,7 +302,7 @@ export default function TeamTab({ currentUser, peers }: Props) {
                 }}>
                   🎯 {peer.currentFocusSession.taskLabel}
                   <span style={{ float: 'right', fontFamily: 'var(--font-mono)', fontSize: 10 }}>
-                    {formatDuration(peer.currentFocusSession.duration)}
+                    {formatHM(peer.currentFocusSession.duration)}
                   </span>
                 </div>
               ) : peer.activeStatusMessage ? (
@@ -345,7 +322,7 @@ export default function TeamTab({ currentUser, peers }: Props) {
                   color: 'var(--zen-tertiary-text)',
                   marginBottom: 8,
                 }}>
-                  Total focus: {formatDuration(peer.totalFocusTime)}
+                  Total focus: {formatHM(peer.totalFocusTime)}
                 </div>
               )}
 

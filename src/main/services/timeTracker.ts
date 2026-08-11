@@ -1,9 +1,5 @@
 import crypto from 'crypto';
 import { DailyRecord, DailySession } from '../../shared/types';
-
-function uuidv4(): string {
-  return crypto.randomUUID();
-}
 import { PersistenceService } from './persistence';
 
 export class TimeTracker {
@@ -37,7 +33,7 @@ export class TimeTracker {
     if (existing) return existing;
 
     return {
-      id: uuidv4(),
+      id: crypto.randomUUID(),
       date: dateStr, // Store as YYYY-MM-DD for reliable matching
       totalFocusTime: 0,
       sessions: [],
@@ -59,7 +55,7 @@ export class TimeTracker {
     let record = records.find((r) => r.date.startsWith(dateStr));
     if (!record) {
       record = {
-        id: uuidv4(),
+        id: crypto.randomUUID(),
         date: dateStr,
         totalFocusTime: 0,
         sessions: [],
@@ -68,7 +64,7 @@ export class TimeTracker {
     }
 
     const session: DailySession = {
-      id: uuidv4(),
+      id: crypto.randomUUID(),
       taskLabel: data.taskLabel,
       startTime: data.startTime,
       endTime: data.endTime,

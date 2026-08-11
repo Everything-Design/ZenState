@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { formatHM } from '../utils/format';
 
 interface Props {
   type: 'meetingRequest' | 'emergencyRequest' | 'meetingResponse' | 'timerComplete' | 'breakReminder' | 'longRunGuard' | 'timesheetConfirm' | 'idlePrompt' | 'pingReceived';
@@ -19,14 +20,6 @@ interface Props {
 }
 
 const QUICK_REPLIES = ['Give me 5 mins', 'Free after lunch', "Let's do tomorrow"];
-
-function formatAlertDuration(seconds: number): string {
-  const h = Math.floor(seconds / 3600);
-  const m = Math.floor((seconds % 3600) / 60);
-  if (h > 0 && m > 0) return `${h}h ${m}m`;
-  if (h > 0) return `${h}h`;
-  return `${m}m`;
-}
 
 export default function AlertView({ type, from, senderId, message, accepted, targetDuration, elapsedSeconds, lastActivityAt, onRespond, onDismiss, onLongRunResponse, onIdleResponse, onTimesheetConfirm, timesheetProjectId }: Props) {
   const [replyText, setReplyText] = useState('');
@@ -111,7 +104,7 @@ export default function AlertView({ type, from, senderId, message, accepted, tar
           <strong>{from}</strong>
         </div>
         <div style={{ textAlign: 'center', fontSize: 12, color: 'var(--zen-tertiary-text)', marginBottom: 16 }}>
-          You've been tracking for {formatAlertDuration(elapsedSeconds || 0)}.
+          You've been tracking for {formatHM(elapsedSeconds || 0)}.
         </div>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
           <button
@@ -259,7 +252,7 @@ export default function AlertView({ type, from, senderId, message, accepted, tar
             color: 'var(--zen-tertiary-text)',
             marginBottom: message ? 12 : 20,
           }}>
-            {formatAlertDuration(targetDuration)} completed
+            {formatHM(targetDuration)} completed
           </div>
         )}
         {message && (
