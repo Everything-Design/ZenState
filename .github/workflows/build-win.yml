@@ -43,6 +43,6 @@ jobs:
           for f in dist/*.exe dist/*.blockmap dist/latest.yml; do
             if [ -f "$f" ]; then
               echo "Uploading: $f"
-              gh release upload "$tag" "$f" --clobber --repo Everything-Design/ZenState_V3
+              gh release upload "$tag" "$f" --clobber --repo Everything-Design/ZenState
             fi
           done

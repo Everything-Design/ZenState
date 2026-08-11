@@ -46,7 +46,7 @@
     "publish": {
       "provider": "github",
       "owner": "Everything-Design",
-      "repo": "ZenState_V3"
+      "repo": "ZenState"
     },
     "mac": {
       "icon": "build/icon.png",
