@@ -1,6 +1,6 @@
 # Desktop release validation
 
-The 5.8.4-test.7 artifacts are test builds, not a production release. Do not publish individual platform files to a live release before the complete release set is verified.
+The current candidate is stable v5.8.4. Earlier test-build results below are historical. Do not publish individual platform files to a live release before the complete release set is verified.
 
 ## Automated checks
 
@@ -88,3 +88,11 @@ The default `npm run release:check` now verifies the stable artifacts under `dis
 - GitHub draft downloads require push access. Only the native update-test jobs receive `contents: write` for that read; none of these workflows publishes releases.
 
 See the GitHub workflow run results for the final pass/fail status. Source-level or fixture checks do not guarantee that every historical installation or future release can update; preserve the signing identity and complete manifests and repeat native update tests for each release.
+
+### Final native validation and legacy test-channel migration
+
+[Run 35215474465](https://github.com/Everything-Design/ZenState/actions/runs/35215474465) passed all seven jobs: the three OS builds, combined artifact verification, and native Windows, AppImage and Debian updates. The separate local Mac ARM native test passed both v5.8.3 → v5.8.4 and v5.8.4 → a test-only next-version fixture. No Intel Mac hardware test or live Basecamp write was performed.
+
+Early 5.8.4-test clients infer a custom `test` update channel and cannot discover a stable release by themselves. The installed test.4 GitHubProvider implementation is byte-identical to the 6.8.9 provider used by `scripts/check-test-channel-bridge.cjs`. That script checks 60 platform/version/repository combinations using the real provider and writes three compatibility manifests. Their `version` is 5.8.4 and their `tag` is v5.8.4, so the provider resolves the exact verified stable files and hashes rather than requiring another build. Both the current repository name and the old ZenState_V3 alias are covered. The bridge tag v5.8.4-test.8 is an intentional metadata-only alias, not an application version.
+
+Publish the complete stable release first, then the bridge as a prerelease with `--latest=false`. Never mark the bridge as latest. Run `node scripts/check-test-channel-bridge.cjs --live` after publication to verify actual discovery and download routing. Stable clients remain on v5.8.4; early test clients install v5.8.4 and subsequently follow stable updates. Future stable releases must continue shipping all three manifests and the matching complete artifact set.
