@@ -18,11 +18,15 @@ permissions:
 jobs:
   installed-windows-update:
     if: inputs.installed_update
+    permissions:
+      contents: write # GitHub requires push access to read unpublished drafts.
     uses: ./.github/workflows/check-windows-update.yml
     with:
       release: v${{ inputs.version }}
   installed-linux-updates:
     if: inputs.installed_update
+    permissions:
+      contents: write # Used only to download the private draft assets.
     uses: ./.github/workflows/check-linux-update.yml
     with:
       release: v${{ inputs.version }}

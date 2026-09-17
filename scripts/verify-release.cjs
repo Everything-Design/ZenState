@@ -46,19 +46,20 @@ function verifyMetadata(dir, name) {
 }
 function verifyApp(resources,version) {
   const file=path.join(resources,'app.asar');const files=asar.listPackage(file).map(entry=>entry.replaceAll('\\','/'));
-  const pkg=JSON.parse(asar.extractFile(file,'package.json'));assert.equal(pkg.version,version);
+  const extract=entry=>asar.extractFile(file,entry.replaceAll('/',path.sep));
+  const pkg=JSON.parse(extract('package.json'));assert.equal(pkg.version,version);
   // Packaging may hoist dependencies differently; compare name + version to
   // the tested lockfile rather than assuming identical node_modules paths.
   const lock=JSON.parse(fs.readFileSync('package-lock.json','utf8'));
   const locked=new Set(Object.entries(lock.packages).filter(([key])=>key.includes('node_modules/')).map(([key,value])=>`${key.slice(key.lastIndexOf('node_modules/')+13)}@${value.version}`));
   for(const entry of files.filter(p=>/\/node_modules\/(?:@[^/]+\/)?[^/]+\/package\.json$/.test(p))) {
-    const dependency=JSON.parse(asar.extractFile(file,entry.slice(1)));
+    const dependency=JSON.parse(extract(entry.slice(1)));
     if(dependency.name && dependency.version)assert.ok(locked.has(`${dependency.name}@${dependency.version}`),`Packaged dependency differs from lockfile: ${dependency.name}@${dependency.version}`);
   }
   for(const required of ['dist/main/index.js','dist/main/preload.js','dist/renderer/index.html','dist/renderer/dashboard.html','dist/renderer/mini-timer.html','dist/renderer/alert.html','dist/shared/types.js'])assert.ok(files.includes('/'+required),`Missing ${required}`);
-  for(const entry of files.filter(p=>p.startsWith('/dist/main/')&&p.endsWith('.js')))new vm.Script(asar.extractFile(file,entry.slice(1)).toString(),{filename:entry});
+  for(const entry of files.filter(p=>p.startsWith('/dist/main/')&&p.endsWith('.js')))new vm.Script(extract(entry.slice(1)).toString(),{filename:entry});
   for(const entry of files.filter(p=>p.startsWith('/dist/')&&!p.endsWith('/')&&fs.existsSync(p.slice(1))&&fs.statSync(p.slice(1)).isFile())) {
-    assert.ok(asar.extractFile(file,entry.slice(1)).equals(fs.readFileSync(entry.slice(1))),`Packaged source differs from tested build: ${entry}`);
+    assert.ok(extract(entry.slice(1)).equals(fs.readFileSync(entry.slice(1))),`Packaged source differs from tested build: ${entry}`);
   }
   for(const root of ['dist/main','dist/shared','dist/renderer'])for(const relative of fs.readdirSync(root,{recursive:true})) {
     const local=path.join(root,relative);if(path.basename(local)==='.DS_Store'||!fs.statSync(local).isFile())continue;
