@@ -8,7 +8,7 @@ on:
         required: true
         type: string
       installed_update:
-        description: Also test Windows updating from the published baseline to this draft release
+        description: Also test native Windows and Linux updates to this draft release
         default: false
         type: boolean
 
@@ -19,6 +19,11 @@ jobs:
   installed-windows-update:
     if: inputs.installed_update
     uses: ./.github/workflows/check-windows-update.yml
+    with:
+      release: v${{ inputs.version }}
+  installed-linux-updates:
+    if: inputs.installed_update
+    uses: ./.github/workflows/check-linux-update.yml
     with:
       release: v${{ inputs.version }}
   build:
