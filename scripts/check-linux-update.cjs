@@ -31,7 +31,7 @@ record('started',{profile:app.getPath('userData')});
 const updater=require('electron-updater').autoUpdater;
 updater.setFeedURL({provider:'generic',url:${JSON.stringify(feed)}});updater.disableDifferentialDownload=true;
 // The disposable runner has passwordless sudo but no desktop PolicyKit agent.
-${deb ? "updater.determineSudoCommand=()=>'/usr/bin/sudo';" : ''}
+${deb ? "updater.determineSudoCommand=()=>'sudo';" : ''}
 const install=updater.quitAndInstall.bind(updater);updater.quitAndInstall=()=>install(true,true);
 updater.on('error',e=>record('error',{message:String(e.stack)}));
 updater.on('update-downloaded',info=>{record('downloaded',{next:info.version});setTimeout(()=>ipcMain.emit('app:install-update'),500)});
