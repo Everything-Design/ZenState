@@ -7,11 +7,20 @@ on:
         description: Version to build (for example 5.8.4-test.7)
         required: true
         type: string
+      installed_update:
+        description: Also test Windows updating from the published baseline to this draft release
+        default: false
+        type: boolean
 
 permissions:
   contents: read
 
 jobs:
+  installed-windows-update:
+    if: inputs.installed_update
+    uses: ./.github/workflows/check-windows-update.yml
+    with:
+      release: v${{ inputs.version }}
   build:
     strategy:
       fail-fast: false

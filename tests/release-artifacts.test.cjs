@@ -56,7 +56,9 @@ test('release set rejects empty directories, missing packaged apps, mismatched v
     fs.mkdirSync(resources);
     fs.writeFileSync(path.join(appSource,'package.json'),JSON.stringify({version}));
     fs.writeFileSync(path.join(appSource,'node_modules','zenstate-dependency-fixture','package.json'),JSON.stringify({name:'zenstate-dependency-fixture',version:'999.0.0'}));
-    await require('@electron/asar').createPackage(appSource,path.join(resources,'app.asar'));
+    // asar's promise resolves before its output stream finishes on Windows.
+    // Let a child exit after all I/O drains before reading the fixture.
+    execFileSync(process.execPath,['-e',"require('@electron/asar').createPackage(process.argv[1],process.argv[2]).catch(e=>{console.error(e);process.exitCode=1})",appSource,path.join(resources,'app.asar')],{stdio:'pipe'});
     assert.throws(()=>verifyApp(resources,version),/Packaged dependency differs from lockfile/);
   }finally{fs.rmSync(root,{recursive:true,force:true})}
 });

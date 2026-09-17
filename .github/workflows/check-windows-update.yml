@@ -1,0 +1,46 @@
+name: Validate installed Windows update
+on:
+  workflow_call:
+    inputs:
+      release:
+        required: true
+        type: string
+  workflow_dispatch:
+    inputs:
+      release:
+        description: Candidate draft release tag
+        required: true
+        default: v5.8.4
+        type: string
+permissions:
+  contents: read
+jobs:
+  installed-update:
+    runs-on: windows-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Download candidate from unpublished draft
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ inputs.release }}
+        run: gh release download $env:RELEASE_TAG --repo Everything-Design/ZenState --pattern '*.exe' --pattern '*.exe.blockmap' --pattern latest.yml --dir candidate
+      - name: Install the previous published Windows version
+        shell: pwsh
+        run: |
+          Invoke-WebRequest https://github.com/Everything-Design/ZenState/releases/download/v5.8.2/ZenState-Setup-5.8.2.exe -OutFile baseline.exe
+          $install = Join-Path $env:RUNNER_TEMP 'ZenStateUpdateTest'
+          Start-Process .\baseline.exe -ArgumentList '/S',"/D=$install" -Wait
+          "ZENSTATE_TEST_INSTALL=$install" >> $env:GITHUB_ENV
+      - name: Verify download, installation, restart and retained data
+        run: node scripts/check-windows-update.cjs candidate
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: windows-installed-update-evidence
+          path: update-evidence/

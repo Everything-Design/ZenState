@@ -45,7 +45,7 @@ function verifyMetadata(dir, name) {
   return {manifest:name,version:metadata.version,artifacts:metadata.files.map(f=>f.url)};
 }
 function verifyApp(resources,version) {
-  const file=path.join(resources,'app.asar');const files=asar.listPackage(file);
+  const file=path.join(resources,'app.asar');const files=asar.listPackage(file).map(entry=>entry.replaceAll('\\','/'));
   const pkg=JSON.parse(asar.extractFile(file,'package.json'));assert.equal(pkg.version,version);
   // Packaging may hoist dependencies differently; compare name + version to
   // the tested lockfile rather than assuming identical node_modules paths.
