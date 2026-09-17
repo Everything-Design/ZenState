@@ -14,3 +14,9 @@ scripts/keys/
 ruvector.db
 ZenState_V3/
 .aider*
+
+# ShipStudio metadata
+.shipstudio/
+
+# Weekly allocation checks
+.test-weekly/

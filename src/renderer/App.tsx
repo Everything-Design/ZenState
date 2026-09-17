@@ -31,6 +31,12 @@ export default function App() {
   // Load initial data
   useEffect(() => {
     async function init() {
+      if (!window.zenstate) {
+        console.error('[App] window.zenstate unavailable during init');
+        setLoading(false);
+        return;
+      }
+
       const user = await window.zenstate.getUser();
       setCurrentUser(user);
       if (user) {
@@ -50,6 +56,11 @@ export default function App() {
   // channel, e.g. when SettingsTab and ProjectsTab both listened on
   // basecamp:auth-changed in the dashboard window).
   useEffect(() => {
+    if (!window.zenstate) {
+      console.error('[App] window.zenstate unavailable before listener hookup');
+      return;
+    }
+
     const offs = [
       window.zenstate.on(IPC.PEER_DISCOVERED, (peer: unknown) => {
         const p = peer as User;

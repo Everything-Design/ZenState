@@ -20,6 +20,38 @@ export interface ReleaseHighlight {
 
 export const RELEASE_HIGHLIGHTS: ReleaseHighlight[] = [
   {
+    version: '5.8.4',
+    title: 'Your weekly allocation, alongside your time',
+    intro: 'See your saved project allocations from Everything Ops without leaving ZenState.',
+    bullets: [
+      'Open Weekly allocation in the left menu to compare planned hours, recorded Basecamp time, and remaining hours.',
+      'Allocated billable projects appear first. Other recorded billable work is grouped in a separate dropdown.',
+      'Browse previous weeks: green is below plan, yellow matches the plan, and red shows overtime.',
+      'Check the sync status to see how current your recorded hours are. Recording continues if planning is unavailable.',
+      'Quit and update restarts now wait until your timer and any time submission are finished.',
+      'Linux x64 builds are now available alongside Windows and both Mac versions.',
+    ],
+    footer: 'Got feedback?',
+    footerLink: {
+      label: 'Drop it in Basecamp',
+      url: 'https://3.basecamp.com/5826042/buckets/38489884/cloud_files/9572235152',
+    },
+  },
+  {
+    version: '5.8.3',
+    title: "What's new in v5.8.3",
+    intro: 'A startup crash on Windows has been fixed — the dashboard now shows a safe fallback instead of blowing up when the preload bridge isn’t available, while the Mac path remains unchanged.',
+    bullets: [
+      'Windows: hardened the renderer startup so a missing preload bridge no longer crashes the dashboard with the undefined .on error.',
+      'Mac: same safe guard added for parity; no behavior change if the bridge loads normally.',
+    ],
+    footer: 'Got feedback?',
+    footerLink: {
+      label: 'Drop it in Basecamp',
+      url: 'https://3.basecamp.com/5826042/buckets/38489884/cloud_files/9572235152',
+    },
+  },
+  {
     version: '5.8.2',
     title: "What's new in v5.8.2",
     intro: 'Starting a different task from the Plan tab or popover now saves your current timer first — same behavior as switching tasks in the floating pill.',

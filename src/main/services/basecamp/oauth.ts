@@ -130,6 +130,13 @@ export class BasecampOAuth extends EventEmitter {
     return store.get('basecampAuth');
   }
 
+  // Optional planning reads must never refresh, expire, disconnect or write auth state.
+  getPlanningCredential(): { accessToken: string; accountId: string; identityKey: string } | null {
+    const auth = this.getStoredAuth();
+    if (!auth || !Number.isFinite(Date.parse(auth.expiresAt)) || Date.parse(auth.expiresAt) <= Date.now()) return null;
+    return { accessToken: decrypt(auth.accessToken), accountId: String(auth.account.id), identityKey: String(auth.identity.id) };
+  }
+
   async getAccessToken(): Promise<string> {
     const auth = this.getStoredAuth();
     if (!auth) throw new Error('Basecamp is not connected');

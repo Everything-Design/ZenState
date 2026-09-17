@@ -88,13 +88,15 @@ export class PersistenceService {
     // unboundedly. Previously `getRecords()` could return a year+ of daily
     // records over time (each containing N sessions); every Basecamp-event
     // broadcast triggered a full reload, scaling linearly with usage. We
-    // keep the most-recent 90 days hot — anything older drops off. If
+    // keep the most-recent 90 days hot. Never prune local-only or unposted
+    // sessions: Basecamp has no copy to recover those from. If
     // export-history-to-CSV becomes a feature, we'll need an archive file
     // instead of pruning; for now a 90-day rolling window matches the
     // Timesheet UI's effective scope.
     const RETENTION_DAYS = 90;
     const cutoffMs = Date.now() - RETENTION_DAYS * 24 * 60 * 60 * 1000;
     const fresh = records.filter((r) => {
+      if (r.sessions.some(session => !session.basecamp?.synced)) return true;
       const d = new Date(r.date.split('T')[0]).getTime();
       return Number.isFinite(d) && d >= cutoffMs;
     });

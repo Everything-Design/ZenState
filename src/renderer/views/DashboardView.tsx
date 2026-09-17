@@ -1,5 +1,5 @@
 import React, { useState, useEffect, Suspense, lazy } from 'react';
-import { Users, ClipboardList, Settings, MessageCircle, CalendarDays, Clock } from 'lucide-react';
+import { Users, ClipboardList, Settings, MessageCircle, CalendarDays, CalendarRange, Clock } from 'lucide-react';
 import { User, AvailabilityStatus, DailyRecord, LicenseState } from '../../shared/types';
 import Avatar from '../components/Avatar';
 import { formatRevertTime } from '../utils/format';
@@ -13,6 +13,7 @@ import PlanTab from './dashboard/PlanTab';
 const TeamTab = lazy(() => import('./dashboard/TeamTab'));
 const TimesheetTab = lazy(() => import('./dashboard/TimesheetTab'));
 const SettingsTab = lazy(() => import('./dashboard/SettingsTab'));
+const WeeklyAllocationsTab = lazy(() => import('./dashboard/WeeklyAllocationsTab'));
 // v5.8.0 — Team time tracking surface. Lazy-loaded like the other secondary
 // tabs; nav button only rendered for BC account admins, so non-admins never
 // download the chunk in the first place.
@@ -60,7 +61,7 @@ const REVERT_OPTIONS = [
   { label: 'None', seconds: 0 },
 ];
 
-type Tab = 'plan' | 'team' | 'timesheet' | 'teamtime' | 'settings';
+type Tab = 'plan' | 'allocations' | 'team' | 'timesheet' | 'teamtime' | 'settings';
 
 export default function DashboardView({ currentUser, peers, timerState, records, statusRevertRemaining, requestedTab, isPro, licenseState, onLicenseStateChange, onRequestedTabHandled, onRefreshRecords, onStatusChange, onUserUpdate, onSignOut }: Props) {
   const [activeTab, setActiveTab] = useState<Tab>('plan');
@@ -80,7 +81,7 @@ export default function DashboardView({ currentUser, peers, timerState, records,
     // Legacy "today" requests (from older code paths or notifications) still
     // route to the renamed Plan tab so deep-links don't break.
     const normalised = requestedTab === 'today' ? 'plan' : requestedTab;
-    if (['plan', 'team', 'timesheet', 'settings'].includes(normalised)) {
+    if (['plan', 'allocations', 'team', 'timesheet', 'settings'].includes(normalised)) {
       setActiveTab(normalised as Tab);
       onRequestedTabHandled?.();
     }
@@ -293,6 +294,12 @@ export default function DashboardView({ currentUser, peers, timerState, records,
             <CalendarDays size={16} /> Plan
           </button>
           <button
+            className={`tab-btn ${activeTab === 'allocations' ? 'active' : ''}`}
+            onClick={() => setActiveTab('allocations')}
+          >
+            <CalendarRange size={16} /> Weekly allocation
+          </button>
+          <button
             className={`tab-btn ${activeTab === 'team' ? 'active' : ''}`}
             onClick={() => setActiveTab('team')}
           >
@@ -335,6 +342,11 @@ export default function DashboardView({ currentUser, peers, timerState, records,
             onOpenSettings={() => setActiveTab('settings')}
             onRefreshRecords={onRefreshRecords}
           />
+        )}
+        {activeTab === 'allocations' && (
+          <Suspense fallback={<TabLoading />}>
+            <WeeklyAllocationsTab />
+          </Suspense>
         )}
         {activeTab === 'team' && (
           <Suspense fallback={<TabLoading />}>

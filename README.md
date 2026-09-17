@@ -14,12 +14,12 @@ It runs from the macOS menu bar (or the Windows tray) and stays out of the way.
 
 ## Install
 
-Download the latest build from [Releases](https://github.com/Everything-Design/ZenState_V3/releases/latest):
+Download the latest build from [Releases](https://github.com/Everything-Design/ZenState/releases/latest):
 
 | Platform | File |
 |---|---|
 | macOS (Apple Silicon) | `ZenState-x.y.z-arm64.dmg` |
-| Windows (x64) | `ZenState Setup x.y.z.exe` |
+| Windows (x64) | `ZenState-Setup-x.y.z.exe` |
 
 > **First-launch on macOS** — the app isn't yet notarized with Apple, so Gatekeeper will refuse to open it. Right-click the app in `/Applications` → **Open** → confirm. You only need to do this once.
 
@@ -131,23 +131,18 @@ npm run build
 npm run dist:mac     # macOS DMG + ZIP
 npm run dist:win     # Windows NSIS installer
 
-# Publish to GitHub Releases
-GH_TOKEN=$(gh auth token) npm run publish      # macOS
-GH_TOKEN=$(gh auth token) npm run publish:win  # Windows
+npm run dist:linux # Linux x64 AppImage + Debian package
 ```
 
-After publishing, mark the release non-draft:
+Packaging commands never publish. Build all platforms using the manual **Validate desktop release** workflow, then use its combined `verified-release-*` artifact. The old per-platform publish shortcuts have been removed because they could expose an incomplete update feed.
 
-```bash
-gh release edit v$(node -p "require('./package.json').version") \
-  --draft=false --repo Everything-Design/ZenState_V3
-```
+Before public release, follow [Desktop release validation](docs/release-validation.md): finish signing and native install/update tests, set the stable package version, verify the complete asset set, upload it to a draft, and publish only when every platform is ready. Tests and local packaging alone do not establish release readiness.
 
 ---
 
 ## Tech stack
 
-Electron 33 · React 19 · TypeScript · Vite · electron-builder · electron-store · Bonjour (mDNS) · Basecamp 3 OAuth · Ed25519 license signing.
+Electron 42 · React 19 · TypeScript · Vite · electron-builder · electron-store · Bonjour (mDNS) · Basecamp 3 OAuth · Ed25519 license signing.
 
 ---
 

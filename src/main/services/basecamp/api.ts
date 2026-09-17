@@ -182,6 +182,8 @@ const MAX_RATE_LIMIT_RETRIES = 3;
 const MAX_RATE_LIMIT_WAIT_SEC = 60;
 
 export class BasecampApi {
+  private pendingWrites = 0;
+  get hasPendingWrites(): boolean { return this.pendingWrites > 0; }
   constructor(private readonly oauth: BasecampOAuth) {}
 
   // Authenticated fetch with auto-refresh on 401 and bounded backoff on 429.
@@ -217,13 +219,19 @@ export class BasecampApi {
   }
 
   private async requestJson<T>(url: string, init: RequestInit = {}): Promise<T> {
-    const res = await this.fetchAuth(url, init);
-    if (!res.ok) {
-      const body = await res.text();
-      throw new Error(`Basecamp API ${res.status}: ${body || res.statusText}`);
+    const write = init.method !== undefined && !['GET', 'HEAD'].includes(init.method.toUpperCase());
+    if (write) this.pendingWrites++;
+    try {
+      const res = await this.fetchAuth(url, init);
+      if (!res.ok) {
+        const body = await res.text();
+        throw new Error(`Basecamp API ${res.status}: ${body || res.statusText}`);
+      }
+      if (res.status === 204) return undefined as T;
+      return await res.json() as T;
+    } finally {
+      if (write) this.pendingWrites--;
     }
-    if (res.status === 204) return undefined as T;
-    return res.json() as Promise<T>;
   }
 
   // Walks Link: rel="next" pagination, returning a flattened list.

@@ -1,122 +1,97 @@
 import { autoUpdater } from 'electron-updater';
-import { app, BrowserWindow } from 'electron';
+import { autoUpdater as nativeUpdater, BrowserWindow, dialog } from 'electron';
 
-// v5.1.2 — broadcast every meaningful autoUpdater lifecycle event to the
-// renderer so SettingsTab can drive its state machine off real signals
-// instead of guessing from the one-shot checkForUpdate() return value.
-// This was the root cause of Windows builds appearing "stuck at downloading":
-// the renderer set updateStatus='available' after the initial check, then
-// never received any event to advance past it because download-progress
-// and error events weren't being surfaced.
+let updateReady = false;
+let downloadedInfo: { version: string } | null = null;
+
+function updateErrorMessage(err: unknown): string {
+  const message = (err as Error)?.message ?? String(err);
+  console.warn('ZenState updater:', err);
+  if (/latest(?:-mac|-linux)?\.yml/i.test(message) && /404|cannot find/i.test(message)) {
+    return 'The latest release is missing update files for your system. Please try again after the release is corrected. Time recording is unaffected.';
+  }
+  if (/ENOTFOUND|ECONN|ETIMEDOUT|ERR_NETWORK|ERR_INTERNET|network|offline/i.test(message)) {
+    return 'Could not reach the update server. Check your connection and try again. Time recording is unaffected.';
+  }
+  if (/checksum|signature|code.?sign/i.test(message)) {
+    return 'The update could not be verified and was not installed. Please try again later.';
+  }
+  return 'The update could not be completed. Please try again later. Time recording is unaffected.';
+}
+
 function broadcast(channel: string, payload?: unknown) {
   for (const win of BrowserWindow.getAllWindows()) {
     if (win.isDestroyed()) continue;
-    try {
-      win.webContents.send(channel, payload);
-    } catch (err) {
-      // Window may be in a transitional state; broadcast is best-effort.
-      console.warn(`updater: broadcast to ${channel} failed:`, err);
-    }
+    try { win.webContents.send(channel, payload); }
+    catch (err) { console.warn(`updater: broadcast to ${channel} failed:`, err); }
   }
 }
 
-export function setupUpdater() {
+function announceReady(info: { version: string }) {
+  updateReady = true;
+  broadcast('update:downloaded', { version: info.version });
+}
+
+export function setupUpdater(onBeforeInstall: () => void = () => {}) {
+  // Test builds may advance to a newer stable release, never another test
+  // release or an older version. Setting channel implicitly enables
+  // downgrades in electron-updater, so reset that flag afterwards.
+  autoUpdater.channel = 'latest';
+  autoUpdater.allowPrerelease = false;
+  autoUpdater.allowDowngrade = false;
   autoUpdater.autoDownload = true;
   autoUpdater.autoInstallOnAppQuit = true;
 
-  autoUpdater.on('checking-for-update', () => {
-    broadcast('update:checking');
+  nativeUpdater.on('before-quit-for-update', onBeforeInstall);
+  nativeUpdater.on('update-downloaded', () => {
+    if (process.platform === 'darwin' && downloadedInfo) announceReady(downloadedInfo);
   });
-
-  autoUpdater.on('update-available', (info) => {
-    console.log(`Update available: ${info.version}`);
-    broadcast('update:available', { version: info.version });
+  autoUpdater.on('checking-for-update', () => broadcast('update:checking'));
+  autoUpdater.on('update-available', info => broadcast('update:available', { version: info.version }));
+  autoUpdater.on('update-not-available', info => broadcast('update:not-available', { version: info?.version }));
+  autoUpdater.on('download-progress', progress => broadcast('update:progress', {
+    percent: Math.round(progress.percent ?? 0), bytesPerSecond: progress.bytesPerSecond ?? 0,
+    transferred: progress.transferred ?? 0, total: progress.total ?? 0,
+  }));
+  autoUpdater.on('update-downloaded', info => {
+    downloadedInfo = info;
+    // On macOS this event precedes Squirrel fetching and verifying its ZIP.
+    // Only the native event means Restart is safe to offer.
+    if (process.platform !== 'darwin') announceReady(info);
   });
+  autoUpdater.on('error', err => broadcast('update:error', { message: updateErrorMessage(err) }));
 
-  autoUpdater.on('update-not-available', (info) => {
-    broadcast('update:not-available', { version: info?.version });
+  const check = () => autoUpdater.checkForUpdatesAndNotify().catch(err => {
+    console.warn('Background update check failed:', err);
   });
-
-  autoUpdater.on('download-progress', (progress) => {
-    broadcast('update:progress', {
-      percent: Math.round(progress.percent ?? 0),
-      bytesPerSecond: progress.bytesPerSecond ?? 0,
-      transferred: progress.transferred ?? 0,
-      total: progress.total ?? 0,
-    });
-  });
-
-  autoUpdater.on('update-downloaded', (info) => {
-    console.log(`Update downloaded: ${info.version} — will install on quit`);
-    broadcast('update:downloaded', { version: info.version });
-  });
-
-  autoUpdater.on('error', (err) => {
-    console.error('Auto-update error:', err);
-    broadcast('update:error', {
-      message: err?.message ?? 'Update failed',
-    });
-  });
-
-  // Check on launch
-  autoUpdater.checkForUpdatesAndNotify().catch((err) => {
-    console.warn('Initial update check failed:', err);
-  });
-
-  // Check every 4 hours
-  setInterval(() => {
-    autoUpdater.checkForUpdatesAndNotify().catch((err) => {
-      console.warn('Periodic update check failed:', err);
-    });
-  }, 4 * 60 * 60 * 1000);
+  void check();
+  setInterval(() => { void check(); }, 4 * 60 * 60 * 1000);
 }
 
-/**
- * Manual update check — triggered from the Settings UI's "Check for update"
- * button. Returns whether an update is available; the actual download is
- * driven by autoDownload=true and surfaces progress via the download-progress
- * + update-downloaded events broadcast above.
- *
- * v5.1.2: removed the previous autoDownload toggle dance — it was unreliable
- * on Windows (the redundant second checkForUpdatesAndNotify() call could race
- * with the in-flight download and silently abort it). Now we let the standard
- * autoDownload pipeline handle everything; this function just kicks the
- * check and returns the verdict.
- */
-export async function checkForUpdate(): Promise<{ updateAvailable: boolean; version?: string }> {
+export async function checkForUpdate(): Promise<{ updateAvailable: boolean; version?: string; error?: string }> {
   try {
     const result = await autoUpdater.checkForUpdates();
-    if (!result || !result.updateInfo) {
-      return { updateAvailable: false };
-    }
-    const latest = result.updateInfo.version;
-    const current = app.getVersion();
-    if (isNewerVersion(latest, current)) {
-      // autoDownload is on, so a download is already in flight after the
-      // check above. The renderer will receive update:available → update:progress
-      // → update:downloaded events naturally.
-      return { updateAvailable: true, version: latest };
-    }
-    return { updateAvailable: false };
+    if (!result?.updateInfo) return { updateAvailable: false };
+    // Reuse the updater's semver, platform and rollout decision. Splitting
+    // versions into numbers breaks prereleases and stable transitions.
+    void result.downloadPromise?.catch(() => { /* surfaced by update:error */ });
+    return { updateAvailable: result.isUpdateAvailable, version: result.updateInfo.version };
   } catch (err) {
-    console.error('Manual update check error:', err);
-    // Surface the error so the UI can recover from a stuck state instead of
-    // sitting on "checking…" forever.
-    broadcast('update:error', {
-      message: (err as Error)?.message ?? 'Update check failed',
-    });
-    return { updateAvailable: false };
+    const error = updateErrorMessage(err);
+    broadcast('update:error', { message: error });
+    return { updateAvailable: false, error };
   }
 }
 
-function isNewerVersion(latest: string, current: string): boolean {
-  const l = latest.split('.').map(Number);
-  const c = current.split('.').map(Number);
-  for (let i = 0; i < Math.max(l.length, c.length); i++) {
-    const lv = l[i] || 0;
-    const cv = c[i] || 0;
-    if (lv > cv) return true;
-    if (lv < cv) return false;
+export function installUpdate(blockReason: string | null): void {
+  if (blockReason || !updateReady) {
+    const message = blockReason ?? 'The update is not ready to install yet.';
+    broadcast('update:error', { message });
+    // The restart banner also exists outside Settings, so a renderer-only
+    // error listener is insufficient feedback for a blocked restart.
+    void dialog.showMessageBox({ type: 'info', title: 'ZenState update', message, buttons: ['OK'] }).catch(() => {});
+    return;
   }
-  return false;
+  try { autoUpdater.quitAndInstall(); }
+  catch (err) { broadcast('update:error', { message: updateErrorMessage(err) }); }
 }

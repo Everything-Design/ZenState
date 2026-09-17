@@ -26,8 +26,21 @@ class ErrorBoundary extends React.Component<
 }
 
 const root = createRoot(document.getElementById('root')!);
-root.render(
-  <ErrorBoundary>
-    <DashboardApp />
-  </ErrorBoundary>
-);
+if (!window.zenstate) {
+  console.error('[ZenState] window.zenstate is not available in dashboard preload.');
+  root.render(
+    <ErrorBoundary>
+      <div style={{ color: '#ff6b6b', padding: 20, fontSize: 12, fontFamily: 'monospace', background: 'rgba(0,0,0,0.8)', borderRadius: 12, margin: 8 }}>
+        <strong>Preload Error:</strong><br />
+        window.zenstate is not available.<br />
+        The preload script may have failed to load.
+      </div>
+    </ErrorBoundary>
+  );
+} else {
+  root.render(
+    <ErrorBoundary>
+      <DashboardApp />
+    </ErrorBoundary>
+  );
+}

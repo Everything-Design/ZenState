@@ -7,10 +7,11 @@ import { createPopoverWindow, createDashboardWindow, createAlertWindow, createMi
 import { NetworkingService } from './networking/NetworkingService';
 import { PersistenceService } from './services/persistence';
 import { TimeTracker } from './services/timeTracker';
-import { setupUpdater, checkForUpdate } from './updater';
+import { setupUpdater, checkForUpdate, installUpdate } from './updater';
 import { IPC, AvailabilityStatus, User, MessageType, AppSettings, PinnedTodo, MyAssignmentsDueScope } from '../shared/types';
 import { LicenseManager } from './services/licenseManager';
 import { BasecampService } from './services/basecamp';
+import { fetchWeeklyAllocations } from './services/weeklyAllocations';
 
 // ── Global Error Safety Net ─────────────────────────────────────
 // Catches any unhandled errors that slip through socket error handlers.
@@ -139,14 +140,15 @@ function wireDashboardWindow(win: BrowserWindow) {
     if (win.isDestroyed()) return;
     e.preventDefault();
     // v5.3.1 — Platform-specific close behaviour:
-    //   • Windows: minimize so the taskbar entry stays clickable.
+    //   • Windows/Linux: minimize so the taskbar entry stays clickable,
+    //     including Linux desktops without an enabled tray extension.
     //   • macOS: hide the window but DO NOT toggle dock visibility. v5.3.0
     //     hid the dock when no popover/pill was visible; this caused a Mac
     //     glitch where clicking the tray icon after close — with the app in
     //     `.accessory` mode — fired the popover blur path immediately and
     //     looked like "app closed." Keeping the activation policy stable
     //     (regular while running) avoids the policy-flip race entirely.
-    if (process.platform === 'win32') {
+    if (process.platform !== 'darwin') {
       win.minimize();
     } else {
       win.hide();
@@ -308,7 +310,11 @@ app.on('ready', async () => {
 
   // Auto-update (production only)
   if (!isDev()) {
-    setupUpdater();
+    setupUpdater(() => {
+      // Only force exit after the native installer has actually begun quitting.
+      isQuitting = true;
+      setTimeout(() => { if (isQuitting) app.exit(0); }, 3000);
+    });
   }
 
   // v5.2 — Daily check-in scheduler. Fires every minute (cheap); broadcasts
@@ -411,7 +417,27 @@ app.on('child-process-gone', (_event, details) => {
   console.error(`Child process crashed (type=${details.type}, reason=${details.reason}, exit=${details.exitCode})`);
 });
 
-app.on('before-quit', () => {
+function recordingBlockReason(): string | null {
+  if (timerIsRunning || timerIsPaused) return 'Stop your timer and save the session before quitting or restarting ZenState.';
+  if (pendingTimesheetEntry !== null) return 'Finish the time confirmation before quitting or restarting ZenState.';
+  if (basecamp.api.hasPendingWrites) return 'Wait for the Basecamp submission to finish before quitting or restarting ZenState.';
+  return null;
+}
+
+let quitNoticeOpen = false;
+app.on('before-quit', (event) => {
+  const reason = recordingBlockReason();
+  if (reason) {
+    event.preventDefault();
+    isQuitting = false;
+    if (!quitNoticeOpen) {
+      quitNoticeOpen = true;
+      void dialog.showMessageBox({ type: 'info', title: 'Time recording in progress', message: reason, buttons: ['OK'] })
+        .catch(err => console.warn('Quit notice failed:', err))
+        .finally(() => { quitNoticeOpen = false; });
+    }
+    return;
+  }
   isQuitting = true;
   // v5.2.1 — w.setClosable(true) is critical. Both popoverWindow and miniTimerWindow
   // are created with `closable: false` options, which silently blocks Electron's
@@ -1948,7 +1974,7 @@ function setupIPC() {
     // but the sign-out → sign-in path on the same process needs a manual nudge.
     registerShortcuts();
     // Default Launch at Login to ON for new users
-    app.setLoginItemSettings({ openAtLogin: true });
+    if (process.platform !== 'linux') app.setLoginItemSettings({ openAtLogin: true });
     // Notify the other window — the popover and dashboard each render their
     // own LoginView when currentUser is null, so when one of them logs in the
     // other needs to refresh its state instead of staying stuck on the form.
@@ -2033,10 +2059,10 @@ function setupIPC() {
 
   // Settings: Launch at login
   ipcMain.handle('settings:get-login-item', () => {
-    return app.getLoginItemSettings().openAtLogin;
+    return process.platform === 'linux' ? false : app.getLoginItemSettings().openAtLogin;
   });
   ipcMain.on('settings:set-login-item', (_e, enabled: boolean) => {
-    app.setLoginItemSettings({ openAtLogin: enabled });
+    if (process.platform !== 'linux') app.setLoginItemSettings({ openAtLogin: enabled });
   });
 
   // App version
@@ -2097,37 +2123,10 @@ function setupIPC() {
     return true;
   });
 
-  // Install update (quit and install)
-  // v5.7.0 — Restart-to-update was failing again post Electron 33→42 upgrade.
-  // Same root cause as v5.3.5: autoUpdater.quitAndInstall() calls app.quit()
-  // internally, but if any window (popover/mini-timer with closable:false)
-  // doesn't actually close in time, the process stays alive and the
-  // ShipIt/NSIS installer waits forever for the parent to exit.
-  //
-  // Defence in depth:
-  //   1. Set isQuitting=true UP FRONT (don't rely on before-quit firing first
-  //      to set it). That way window-all-closed's escape hatch (app.exit(0))
-  //      activates the moment the last window does close.
-  //   2. before-quit now destroy()s the popover + mini-timer (see above) so
-  //      they can't stall the teardown anymore.
-  //   3. Hard-exit fallback after 3s. autoUpdater.quitAndInstall() spawns the
-  //      Squirrel.Mac/NSIS installer BEFORE returning, so the install is
-  //      already in flight by the time this fires — we're just guaranteeing
-  //      the parent process actually goes away.
+  // Update restarts must not interrupt timers, confirmation or API writes.
+  // The updater arms exit recovery only after native installation begins.
   ipcMain.on('app:install-update', () => {
-    console.log('[install-update] received — beginning quit-and-install sequence');
-    isQuitting = true;
-    const { autoUpdater } = require('electron-updater');
-    try {
-      autoUpdater.quitAndInstall();
-      console.log('[install-update] quitAndInstall returned');
-    } catch (err) {
-      console.error('[install-update] quitAndInstall threw:', err);
-    }
-    setTimeout(() => {
-      console.log('[install-update] fallback timeout — forcing app.exit(0)');
-      app.exit(0);
-    }, 3000);
+    installUpdate(recordingBlockReason());
   });
 
   // Check for update (manual) — returns result directly
@@ -2387,6 +2386,8 @@ function setupIPC() {
     return true;
   });
   ipcMain.handle(IPC.BC_GET_AUTH_STATE, () => basecamp.getAuthState());
+  ipcMain.handle('planning:get-weekly-allocations', (_e, week: unknown) =>
+    fetchWeeklyAllocations(week, () => basecamp.oauth.getPlanningCredential()));
   ipcMain.handle(IPC.BC_CONNECT, async () => {
     try {
       await basecamp.connect();

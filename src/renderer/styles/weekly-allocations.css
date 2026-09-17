@@ -1,0 +1,36 @@
+.weekly-allocations { max-width: 900px; margin: 0 auto; padding: var(--space-5, 24px) 0; color: var(--zen-text); }
+.weekly-allocations h2 { margin: 0 0 6px; font-size: var(--text-lg, 20px); }
+.weekly-allocations p { color: var(--zen-secondary-text); font-size: var(--text-sm, 13px); line-height: 1.5; margin: 8px 0; }
+.weekly-allocations-heading, .weekly-allocations-navigation { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+.weekly-allocations-heading { justify-content: space-between; }
+.weekly-allocations-navigation { margin: 20px 0; font-size: var(--text-sm, 13px); }
+.weekly-allocations button { font: inherit; font-size: var(--text-sm, 13px); padding: 8px 12px; border: 1px solid var(--zen-divider); border-radius: var(--radius-md, 8px); background: var(--zen-tertiary-bg); color: var(--zen-text); cursor: pointer; }
+.weekly-allocations button:disabled { opacity: .5; cursor: default; }
+.weekly-allocations button:focus-visible { outline: 2px solid var(--zen-primary); outline-offset: 3px; }
+.weekly-allocations-notice { padding: 14px; margin: 18px 0; background: var(--zen-tertiary-bg); border: 1px solid var(--zen-divider); border-radius: var(--radius-md, 8px); font-size: var(--text-sm, 13px); }
+.weekly-allocations-table-wrap { overflow-x: auto; }
+.weekly-allocations table { border-collapse: collapse; width: 100%; font-size: var(--text-sm, 13px); }
+.weekly-allocations th, .weekly-allocations td { text-align: right; padding: 15px 12px; border-bottom: 1px solid var(--zen-divider); font-variant-numeric: tabular-nums; }
+.weekly-allocations th:first-child { text-align: left; min-width: 180px; }
+.weekly-allocations thead th { color: var(--zen-secondary-text); font-weight: 500; white-space: nowrap; }
+.weekly-allocations small { display: block; margin-top: 6px; font-size: 11px; line-height: 1.5; font-weight: 400; color: var(--zen-secondary-text); }
+.weekly-allocations .weekly-allocations-over { color: #ed8585; font-weight: 600; white-space: nowrap; }
+.weekly-allocations .weekly-allocations-within { color: #65c991; font-weight: 600; }
+.weekly-allocations .weekly-allocations-matched { color: #e5bb57; font-weight: 600; }
+.weekly-allocations small.weekly-allocations-progress-label { color: inherit; }
+.weekly-allocations-week { display: flex; flex-direction: column; gap: 4px; min-width: 180px; text-align: center; }
+.weekly-allocations-week span { color: var(--zen-secondary-text); font-size: 11px; }
+.weekly-allocations-sync { display: flex; justify-content: space-between; align-items: center; gap: 10px 24px; flex-wrap: wrap; padding: 12px 14px; border: 1px solid var(--zen-divider); border-radius: var(--radius-md, 8px); background: var(--zen-tertiary-bg); font-size: var(--text-sm, 13px); }
+.weekly-allocations-sync > div { display: flex; gap: 6px 12px; flex-wrap: wrap; }
+.weekly-allocations-sync span { color: var(--zen-secondary-text); }
+.weekly-allocations-sync-status { font-size: 11px; }
+.weekly-allocations-info { margin-top: 24px; border-top: 1px solid var(--zen-divider); padding-top: 16px; }
+.weekly-allocations-info summary { cursor: pointer; color: var(--zen-secondary-text); font-size: var(--text-sm, 13px); }
+.weekly-allocations-info summary:focus-visible { outline: 2px solid var(--zen-primary); outline-offset: 4px; }
+.weekly-allocations .weekly-allocations-updated { margin-top: 18px; font-size: 11px; }
+.weekly-allocations-section-title { font-size: var(--text-sm, 13px); margin: 22px 0 4px; font-weight: 600; }
+.weekly-allocations-other { margin-top: 24px; border: 1px solid var(--zen-divider); border-radius: var(--radius-md, 8px); padding: 14px; }
+.weekly-allocations-other summary { cursor: pointer; font-size: var(--text-sm, 13px); font-weight: 600; line-height: 1.5; }
+.weekly-allocations-other summary span { color: var(--zen-secondary-text); font-weight: 400; }
+.weekly-allocations-other summary:focus-visible { outline: 2px solid var(--zen-primary); outline-offset: 4px; }
+.weekly-allocations-caption { position: absolute; width: 1px; height: 1px; padding: 0; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; }

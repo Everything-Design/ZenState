@@ -124,9 +124,15 @@ export function createTray(callbacks: TrayCallbacks) {
     { label: 'Quit ZenState', click: () => app.quit() },
   ]);
 
-  tray.on('right-click', () => {
-    tray?.popUpContextMenu(contextMenu);
-  });
+  if (process.platform === 'linux') {
+    // Linux StatusNotifier trays expose a registered menu; right-click events
+    // are not consistently delivered by GNOME/Cinnamon panel implementations.
+    tray.setContextMenu(contextMenu);
+  } else {
+    tray.on('right-click', () => {
+      tray?.popUpContextMenu(contextMenu);
+    });
+  }
 }
 
 // ── Update tray icon + title ──────────────────────────────────

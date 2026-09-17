@@ -4,6 +4,7 @@ import DashboardView from './views/DashboardView';
 import LoginView from './views/LoginView';
 import WhatsNewModal from './components/WhatsNewModal';
 import CheckInModal from './components/CheckInModal';
+import type { WeeklyAllocationResult } from '../shared/weeklyAllocations';
 
 // Type declaration for the preload bridge
 declare global {
@@ -68,6 +69,7 @@ declare global {
       bcCancelConnect: () => Promise<boolean>;
       bcDisconnect: () => Promise<BasecampAuthState>;
       bcGetAuthState: () => Promise<BasecampAuthState>;
+      getWeeklyAllocations: (week: string) => Promise<WeeklyAllocationResult>;
       bcListProjects: () => Promise<{ ok: boolean; data?: BasecampProject[]; error?: string }>;
       bcListTodoLists: (projectId: number, todoSetId: number) => Promise<{ ok: boolean; data?: BasecampTodoList[]; error?: string }>;
       bcListTodos: (projectId: number, todoListId: number) => Promise<{ ok: boolean; data?: BasecampTodo[]; error?: string }>;
@@ -168,6 +170,12 @@ export default function DashboardApp() {
 
   useEffect(() => {
     async function init() {
+      if (!window.zenstate) {
+        console.error('[DashboardApp] window.zenstate unavailable during init');
+        setLoading(false);
+        return;
+      }
+
       const user = await window.zenstate.getUser();
       setCurrentUser(user);
       if (user) {
@@ -220,6 +228,11 @@ export default function DashboardApp() {
   // the dashboard listening on the same event would lose its subscription
   // when the parent unmounted).
   useEffect(() => {
+    if (!window.zenstate) {
+      console.error('[DashboardApp] window.zenstate unavailable before listener hookup');
+      return;
+    }
+
     const offs = [
       window.zenstate.on(IPC.PEER_DISCOVERED, (peer: unknown) => {
         const p = peer as User;

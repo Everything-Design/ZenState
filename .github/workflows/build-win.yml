@@ -1,48 +1,82 @@
-name: Build Windows
+name: Validate desktop release
 
 on:
-  release:
-    types: [published]
   workflow_dispatch:
+    inputs:
+      version:
+        description: Version to build (for example 5.8.4-test.7)
+        required: true
+        type: string
+
+permissions:
+  contents: read
 
 jobs:
-  build-win:
-    runs-on: windows-latest
-    permissions:
-      contents: write
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+            platform: windows
+            flags: --win nsis --x64
+          - os: macos-latest
+            platform: mac
+            flags: --mac dmg zip --arm64 --x64
+          - os: ubuntu-22.04
+            platform: linux
+            flags: --linux deb AppImage --x64
+    runs-on: ${{ matrix.os }}
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 22
           cache: npm
-
-      - name: Install dependencies
-        run: npm ci
-
-      - name: Build source (Vite + TypeScript)
-        run: npm run build
-
-      - name: Build Windows installer
-        run: npx electron-builder --win --publish never
-
-      - name: List build output
+      - run: npm ci
+      - run: npm test
+      - run: npx tsc --noEmit -p tsconfig.json
+      - run: npm run build:renderer
+      - name: Build test artifacts (never publish)
         shell: bash
-        run: ls -la dist/*.exe dist/*.blockmap dist/*.yml 2>/dev/null || ls -la dist/
-
-      - name: Upload to GitHub Release
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          BUILD_VERSION: ${{ inputs.version }}
+          BUILD_FLAGS: ${{ matrix.flags }}
+        run: npx electron-builder $BUILD_FLAGS --publish never -c.extraMetadata.version="$BUILD_VERSION" -c.directories.output=dist/ci-release
+      - name: Verify update manifests and packaged files
+        run: npm run verify:release -- dist/ci-release
+      - uses: actions/upload-artifact@v4
+        with:
+          name: zenstate-${{ matrix.platform }}-${{ inputs.version }}
+          if-no-files-found: error
+          path: |
+            dist/ci-release/*.exe
+            dist/ci-release/*.dmg
+            dist/ci-release/*.zip
+            dist/ci-release/*.AppImage
+            dist/ci-release/*.deb
+            dist/ci-release/*.blockmap
+            dist/ci-release/latest*.yml
+
+  verify-complete-release:
+    needs: build
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: zenstate-*-${{ inputs.version }}
+          path: dist/combined-release
+      - name: Verify all platforms together before bundling
         shell: bash
-        run: |
-          version=$(node -p "require('./package.json').version")
-          tag="v${version}"
-          for f in dist/*.exe dist/*.blockmap dist/latest.yml; do
-            if [ -f "$f" ]; then
-              echo "Uploading: $f"
-              gh release upload "$tag" "$f" --clobber --repo Everything-Design/ZenState
-            fi
-          done
+        run: node scripts/verify-release.cjs --complete --artifacts-only dist/combined-release/zenstate-*/ > dist/combined-release/validation.json
+      - uses: actions/upload-artifact@v4
+        with:
+          name: verified-release-${{ inputs.version }}
+          if-no-files-found: error
+          path: dist/combined-release/

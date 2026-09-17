@@ -163,12 +163,13 @@ export default function SettingsTab({ currentUser, peers, isPro, licenseState, o
     setUpdateError(null);
     try {
       const result = await (window as any).zenstate.checkForUpdate();
+      if (result?.error) throw new Error(result.error);
       if (result?.updateAvailable) {
         // 'available' is brief — autoDownload is on so the download starts
         // immediately and update:progress events will flip us to 'downloading'.
-        setUpdateStatus('available');
+        setUpdateStatus((previous) => previous === 'checking' ? 'available' : previous);
       } else {
-        setUpdateStatus('not-available');
+        setUpdateStatus((previous) => previous === 'checking' ? 'not-available' : previous);
         setTimeout(() => setUpdateStatus((s) => (s === 'not-available' ? 'idle' : s)), 3000);
       }
     } catch (err) {
@@ -560,7 +561,9 @@ export default function SettingsTab({ currentUser, peers, isPro, licenseState, o
           {/* Launch at Login */}
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 16 }}>
             <span style={{ fontSize: 13, flex: 1 }}>Launch at Login</span>
-            <button
+            {(window as any).zenstate?.platform === 'linux' ? (
+              <span style={{ fontSize: 12, color: 'var(--zen-secondary-text)' }}>Configure in your desktop's Startup Applications.</span>
+            ) : <button
               onClick={handleToggleLaunchAtLogin}
               style={{
                 width: 44,
@@ -584,7 +587,7 @@ export default function SettingsTab({ currentUser, peers, isPro, licenseState, o
                 transition: 'left 0.2s ease',
                 boxShadow: '0 1px 3px rgba(0,0,0,0.3)',
               }} />
-            </button>
+            </button>}
           </div>
 
           <div className="divider" />
