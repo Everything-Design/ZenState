@@ -4,7 +4,10 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
 const yaml = require('js-yaml');
-const semver = require('semver');
+const { createRequire } = require('node:module');
+// Use the updater's SemVer class; another installed major is not interchangeable.
+const updaterRequire = createRequire(require.resolve('electron-updater'));
+const semver = updaterRequire('semver');
 const { GitHubProvider } = require('electron-updater/out/providers/GitHubProvider');
 
 const stable = '5.8.4';
@@ -13,7 +16,7 @@ const root = path.resolve(__dirname, '../dist/release-5.8.4');
 const output = path.join(root, 'test-channel-bridge');
 const live = process.argv.includes('--live');
 const responses = new Map();
-const feed = `<feed>${[bridge, `v${stable}`].map(tag =>
+const feed = `<feed>${[`v${stable}`, bridge].map(tag =>
   `<entry><title>${tag}</title><link href="https://github.com/Everything-Design/ZenState/releases/tag/${tag}"/><content>Update to ${stable}</content></entry>`
 ).join('')}</feed>`;
 
@@ -65,7 +68,7 @@ async function main() {
           assert.equal(file.url.href, `https://github.com/Everything-Design/${repo}/releases/download/v${stable}/${manifest.files[i].url}`);
           assert.deepEqual(file.info, manifest.files[i]);
         });
-        if (legacy) assert.ok(requests.some(url => url.endsWith(`/${bridge}/${bridgeFile}`)));
+        if (legacy) assert.ok(requests.some(url => new URL(url).pathname.endsWith(`/${bridge}/${bridgeFile}`)), JSON.stringify({ version, platform, requests }));
         results.push({ platform, repo, from: version, to: info.version, legacy, passed: true });
       }
     }

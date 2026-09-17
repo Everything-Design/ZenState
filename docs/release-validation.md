@@ -1,6 +1,6 @@
 # Desktop release validation
 
-The current candidate is stable v5.8.4. Earlier test-build results below are historical. Do not publish individual platform files to a live release before the complete release set is verified.
+Stable [v5.8.4](https://github.com/Everything-Design/ZenState/releases/tag/v5.8.4) was published on 2026-09-17 with all 16 verified assets and release notes. Earlier candidate/test-build results below are historical. Do not publish individual platform files to a live release before the complete release set is verified.
 
 ## Automated checks
 
@@ -96,3 +96,5 @@ See the GitHub workflow run results for the final pass/fail status. Source-level
 Early 5.8.4-test clients infer a custom `test` update channel and cannot discover a stable release by themselves. The installed test.4 GitHubProvider implementation is byte-identical to the 6.8.9 provider used by `scripts/check-test-channel-bridge.cjs`. That script checks 60 platform/version/repository combinations using the real provider and writes three compatibility manifests. Their `version` is 5.8.4 and their `tag` is v5.8.4, so the provider resolves the exact verified stable files and hashes rather than requiring another build. Both the current repository name and the old ZenState_V3 alias are covered. The bridge tag v5.8.4-test.8 is an intentional metadata-only alias, not an application version.
 
 Publish the complete stable release first, then the bridge as a prerelease with `--latest=false`. Never mark the bridge as latest. Run `node scripts/check-test-channel-bridge.cjs --live` after publication to verify actual discovery and download routing. Stable clients remain on v5.8.4; early test clients install v5.8.4 and subsequently follow stable updates. Future stable releases must continue shipping all three manifests and the matching complete artifact set.
+
+Post-publication checks passed: all 16 public assets returned HTTP 200 with the expected sizes; the old repository download alias works; all 60 live provider checks resolved v5.8.4 with the original stable hashes, including the early test-channel migration; GitHub still identifies v5.8.4 as latest stable after publishing the compatibility prerelease. Evidence is in `dist/release-5.8.4/public-download-validation.json` and `test-channel-bridge/live-validation.json`. The provider check uses electron-updater's own SemVer dependency so its version object matches the real updater.
