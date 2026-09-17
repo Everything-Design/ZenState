@@ -16,7 +16,8 @@ async function main(){
   const archive=path.join(resources,'app.asar'),stage=path.join(evidence,'baseline-source');
   asar.extractAll(archive,stage);
   const pkg=JSON.parse(fs.readFileSync(path.join(stage,'package.json')));
-  assert.equal(pkg.version,'5.8.2');const originalMain=pkg.main;pkg.main='update-probe.cjs';
+  assert.ok(require('semver').lt(pkg.version,metadata.version),'Baseline must precede the candidate');
+  const originalMain=pkg.main;pkg.main='update-probe.cjs';
   const processes=()=>{
     const quoted=exe.replaceAll("'","''");
     const script=`@(Get-CimInstance Win32_Process | Where-Object { $_.ExecutablePath -eq '${quoted}' -and $_.CommandLine -notmatch '--type=' } | Select-Object -ExpandProperty ProcessId) | ConvertTo-Json -Compress`;

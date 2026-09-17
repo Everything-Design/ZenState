@@ -108,7 +108,9 @@ if(require.main===module) {
   const args=process.argv.slice(2);
   const flags=new Set(['--complete','--artifacts-only','--stable']);
   for(const arg of args)if(arg.startsWith('--'))assert.ok(flags.has(arg),`Unknown option: ${arg}`);
-  const result=run(args.filter(a=>!flags.has(a)),args.includes('--complete'),args.includes('--artifacts-only'));
+  const dirs=args.filter(a=>!flags.has(a));
+  if(!dirs.length)dirs.push(...['windows','mac','linux'].map(platform=>path.join('dist',`release-${require('../package.json').version}`,platform)));
+  const result=run(dirs,args.includes('--complete'),args.includes('--artifacts-only'));
   if(args.includes('--stable')) {
     assert.ok(args.includes('--complete'),'Stable validation requires --complete');
     const version=require('../package.json').version;

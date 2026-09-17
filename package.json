@@ -17,7 +17,7 @@
     "dist:linux": "npm run build && electron-builder --linux deb AppImage --x64 --publish never",
     "test": "npm run build:main && npm run test:allocations && node --test tests/release-safety.test.cjs tests/release-artifacts.test.cjs",
     "verify:release": "node scripts/verify-release.cjs",
-    "release:check": "npm test && tsc --noEmit -p tsconfig.json && node scripts/verify-release.cjs --complete dist/release-test/windows dist/release-test/mac dist/release-test/linux"
+    "release:check": "npm test && tsc --noEmit -p tsconfig.json && node scripts/verify-release.cjs --complete --stable"
   },
   "author": "ZenState",
   "license": "PROPRIETARY",

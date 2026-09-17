@@ -11,9 +11,10 @@ async function main(){
   const evidence=path.resolve('update-evidence');fs.mkdirSync(evidence,{recursive:true});
   const events=path.join(evidence,'events.jsonl'),stage=path.join(evidence,'baseline-source');
   asar.extractAll(archive,stage);
-  const pkg=JSON.parse(fs.readFileSync(path.join(stage,'package.json')));assert.equal(pkg.version,'5.8.4-test.7');
+  const pkg=JSON.parse(fs.readFileSync(path.join(stage,'package.json')));
   const originalMain=pkg.main;pkg.main='update-probe.cjs';
   const metadata=yaml.load(fs.readFileSync(path.join(candidate,'latest-linux.yml'),'utf8'));
+  assert.equal(pkg.version,`${metadata.version}-update-test.1`);
   const imageInfo=metadata.files.find(file=>file.url.endsWith('.AppImage'));
   const files=new Set(fs.readdirSync(candidate));
   const server=http.createServer((req,res)=>{
@@ -29,6 +30,8 @@ const record=(event,data={})=>fs.appendFileSync(${JSON.stringify(events)},JSON.s
 record('started',{profile:app.getPath('userData')});
 const updater=require('electron-updater').autoUpdater;
 updater.setFeedURL({provider:'generic',url:${JSON.stringify(feed)}});updater.disableDifferentialDownload=true;
+// The disposable runner has passwordless sudo but no desktop PolicyKit agent.
+${deb ? "updater.determineSudoCommand=()=>'/usr/bin/sudo';" : ''}
 const install=updater.quitAndInstall.bind(updater);updater.quitAndInstall=()=>install(true,true);
 updater.on('error',e=>record('error',{message:String(e.stack)}));
 updater.on('update-downloaded',info=>{record('downloaded',{next:info.version});setTimeout(()=>ipcMain.emit('app:install-update'),500)});

@@ -27,7 +27,8 @@ jobs:
       - name: Build isolated earlier-version fixture
         env:
           PACKAGE: ${{ matrix.package }}
-        run: npx electron-builder --linux "$PACKAGE" --x64 --publish never -c.extraMetadata.version=5.8.4-test.7 -c.directories.output=dist/baseline
+          RELEASE_TAG: ${{ inputs.release }}
+        run: npx electron-builder --linux "$PACKAGE" --x64 --publish never -c.extraMetadata.version="${RELEASE_TAG#v}-update-test.1" -c.directories.output=dist/baseline
       - name: Download actual candidate from draft
         env:
           GH_TOKEN: ${{ github.token }}

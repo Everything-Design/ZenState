@@ -32,8 +32,14 @@ jobs:
         run: gh release download $env:RELEASE_TAG --repo Everything-Design/ZenState --pattern '*.exe' --pattern '*.exe.blockmap' --pattern latest.yml --dir candidate
       - name: Install the previous published Windows version
         shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
-          Invoke-WebRequest https://github.com/Everything-Design/ZenState/releases/download/v5.8.2/ZenState-Setup-5.8.2.exe -OutFile baseline.exe
+          $releases = gh api 'repos/Everything-Design/ZenState/releases?per_page=100' | ConvertFrom-Json
+          $baseline = $releases | Where-Object { -not $_.draft -and -not $_.prerelease -and ($_.assets.name -match '^ZenState-Setup-.*\.exe$') } | Select-Object -First 1
+          if (-not $baseline) { throw 'No published Windows baseline found' }
+          $asset = $baseline.assets | Where-Object { $_.name -match '^ZenState-Setup-.*\.exe$' } | Select-Object -First 1
+          Invoke-WebRequest $asset.browser_download_url -OutFile baseline.exe
           $install = Join-Path $env:RUNNER_TEMP 'ZenStateUpdateTest'
           Start-Process .\baseline.exe -ArgumentList '/S',"/D=$install" -Wait
           "ZENSTATE_TEST_INSTALL=$install" >> $env:GITHUB_ENV

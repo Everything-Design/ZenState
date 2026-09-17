@@ -74,3 +74,17 @@ The public v5.8.3 release still needs a complete successor release to resolve Wi
 - Windows installers remain unsigned. Mac apps remain Apple Development signed, without Developer ID distribution signing or notarization. Native Windows/Linux and installed-to-installed updater tests are still outstanding.
 - Evidence is in `dist/release-test/`: `checks.log`, `validation.json`, `dependency-audit.json`, `artifact-integrity.json`, `payload-verification.txt`, `mac-runtime-smoke.log`, the smoke harness, and `SHA256SUMS`.
 - The CI workflow changes are local and have not been run on GitHub. Nothing has been committed, pushed or published by this work. Use .7 for further testing; do not treat these builds as a production release.
+
+
+## Stable v5.8.4 release validation
+
+The default `npm run release:check` now verifies the stable artifacts under `dist/release-<package version>/` and requires the manifests to match `package.json`. Explicit directory arguments remain available for test builds.
+
+- All platform installers and update metadata have been built and uploaded together to an unpublished draft with the v5.8.4 release notes.
+- Both Mac architectures passed signature verification and DMG checksums. All installer archive-integrity checks passed.
+- A native Mac ARM test used isolated, re-signed copies with a separate bundle ID and disposable profile. The published v5.8.3 application code updated to v5.8.4, restarted, retained a local session and settings, and then updated successfully to a test-only next-version fixture. The test-only version is not a release artifact. The published v5.8.3 and candidate apps have matching production signing requirements.
+- Native Windows validation installs published v5.8.2, downloads the exact candidate NSIS installer from the draft, performs a silent update, and checks restart, retained session/settings, and restored GitHub feed. A probe is injected only into the disposable baseline; the candidate installer is unmodified.
+- Native Linux validation exercises both Debian and AppImage candidates against an isolated prerelease fixture under Xvfb. It checks installation, restart and retained records. Office security policies and interactive administrator prompts still depend on the target computer.
+- GitHub draft downloads require push access. Only the native update-test jobs receive `contents: write` for that read; none of these workflows publishes releases.
+
+See the GitHub workflow run results for the final pass/fail status. Source-level or fixture checks do not guarantee that every historical installation or future release can update; preserve the signing identity and complete manifests and repeat native update tests for each release.
