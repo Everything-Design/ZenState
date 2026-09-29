@@ -151,6 +151,65 @@ test('local records survive reload, edits preserve Basecamp identity, and old un
   } finally {fs.rmSync(dir,{recursive:true,force:true})}
 });
 
+test('manual session start times stay local, persist across midnight, and never enter the Basecamp payload',async()=>{
+  const ts = require('typescript');
+  const exports = {};
+  vm.runInNewContext(ts.transpileModule(fs.readFileSync('src/renderer/utils/format.ts','utf8'), {
+    compilerOptions: {module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2022},
+  }).outputText, {exports, Date});
+  const {sessionStartTime, dateStr} = exports;
+  const originalTZ = process.env.TZ;
+  try {
+    for (const zone of ['Asia/Kolkata','America/New_York','UTC']) {
+      process.env.TZ = zone;
+      for (const [day,time] of [['2026-09-28','00:15'],['2026-09-28','23:45'],['2024-02-29','13:05']]) {
+        const start = new Date(sessionStartTime(day,time));
+        assert.equal(dateStr(start),day);
+        assert.equal(start.getHours(),Number(time.slice(0,2)));
+        assert.equal(start.getMinutes(),Number(time.slice(3)));
+      }
+      for (const [day,time] of [['','09:00'],['2026-09-28',''],['2026-02-30','09:00'],['2026-09-28','24:00'],['2026-09-28','12:60']]) {
+        assert.equal(sessionStartTime(day,time),null);
+      }
+    }
+    process.env.TZ = 'America/New_York';
+    assert.equal(sessionStartTime('2026-03-08','02:30'),null);
+    process.env.TZ = 'Asia/Kolkata';
+    assert.equal(sessionStartTime('2026-09-28','00:15'),'2026-09-27T18:45:00.000Z');
+
+    // Exercise the actual IPC handler with isolated storage and a fake network.
+    const {TimeTracker} = load('main/services/timeTracker.js');
+    let records = [], handler;
+    const posts = [];
+    const tracker = new TimeTracker({getRecords:()=>structuredClone(records),saveRecords:value=>{records=structuredClone(value)}});
+    const source = fs.readFileSync('dist/main/index.js','utf8');
+    const start = source.indexOf('electron_1.ipcMain.handle(types_1.IPC.ADD_SESSION,');
+    const end = source.indexOf('// Window management',start);
+    assert.ok(start > 0 && end > start);
+    vm.runInNewContext(source.slice(start,end), {
+      electron_1:{ipcMain:{handle:(_channel,fn)=>{handler=fn}}},
+      types_1:{IPC:{ADD_SESSION:'data:add-session'}}, timeTracker:tracker,
+      basecamp:{api:{createTimesheetEntry:async data=>{posts.push(data);return {id:42}}}},
+      broadcastToWindows(){}, isoDateLocal:dateStr, Date, console,
+    });
+    const result = await handler({}, {
+      taskLabel:'Backdated work', duration:1800, startTime:sessionStartTime('2026-09-28','23:45'),
+      basecamp:{accountId:1,projectId:2,todoId:3},
+    });
+    assert.equal(result.ok,true);
+    assert.equal(result.dateStr,'2026-09-28');
+    const session = tracker.findSession(result.sessionId,result.dateStr);
+    assert.equal(session.startTime,'2026-09-28T18:15:00.000Z');
+    assert.equal(session.endTime,'2026-09-28T18:45:00.000Z');
+    assert.equal(new Date(session.endTime).getDate(),29);
+    assert.equal(records[0].totalFocusTime,1800);
+    assert.deepEqual(JSON.parse(JSON.stringify(posts)),[{todoId:3,date:'2026-09-28',hours:'0.50',description:'Backdated work'}]);
+  } finally {
+    if (originalTZ === undefined) delete process.env.TZ;
+    else process.env.TZ = originalTZ;
+  }
+});
+
 test('sandbox preload exposes the bridge without imports and unsubscribes only its own listener',async()=>{
   const ipc=new EventEmitter(),invocations=[];let bridge;
   ipc.invoke=async(...args)=>{invocations.push(args);return {ok:true}};ipc.send=()=>{};

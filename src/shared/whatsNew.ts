@@ -20,6 +20,17 @@ export interface ReleaseHighlight {
 
 export const RELEASE_HIGHLIGHTS: ReleaseHighlight[] = [
   {
+    version: '5.8.5',
+    title: 'Log time when the work actually happened',
+    intro: 'Choose the start time when adding a session after finishing a task.',
+    bullets: [
+      'Set the date and start time from both Plan and Timesheet.',
+      'Type hours and minutes directly, then choose AM or PM. The current time is filled in when you open the form.',
+      'Use the matching calendar to choose an earlier date.',
+      'Your selected start time appears in ZenState. Basecamp still receives the session date and duration.',
+    ],
+  },
+  {
     version: '5.8.4',
     title: 'Your weekly allocation, alongside your time',
     intro: 'See your saved project allocations from Everything Ops without leaving ZenState.',

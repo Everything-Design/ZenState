@@ -25,6 +25,17 @@ export function dateStr(d: Date): string {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 }
 
+// Native date/time inputs describe local wall time, not UTC. Reject invalid
+// dates (and skipped daylight-saving times) instead of silently shifting them.
+export function sessionStartTime(date: string, time: string): string | null {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(date) || !/^\d{2}:\d{2}$/.test(time)) return null;
+  const start = new Date(`${date}T${time}:00`);
+  if (!Number.isFinite(start.getTime()) || dateStr(start) !== date
+    || start.getHours() !== Number(time.slice(0, 2))
+    || start.getMinutes() !== Number(time.slice(3, 5))) return null;
+  return start.toISOString();
+}
+
 export function monthPrefix(d: Date = new Date()): string {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
 }

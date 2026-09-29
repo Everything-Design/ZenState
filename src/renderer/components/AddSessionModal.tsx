@@ -1,6 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { DailySession, PinnedTodo, BasecampAuthState, RecentTodo } from '../../shared/types';
 import { PinPicker } from '../views/dashboard/TodayTab';
+import { sessionStartTime, todayDateStr } from '../utils/format';
+import SessionDateTimeFields from './SessionDateTimeFields';
 
 type BasecampLink = NonNullable<DailySession['basecamp']>;
 
@@ -15,22 +17,12 @@ interface Props {
   onSaved: (sessionId: string, dateStr: string) => void;
 }
 
-function todayDateStr(): string {
-  const d = new Date();
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
-}
-
-// Construct an ISO string for the chosen date at 9am local time. Manual entries
-// don't have a real start moment — anchoring at 9am keeps them in the right
-// daily bucket without claiming to be precise.
-function makeStartTime(dateStr: string): string {
-  const [y, m, d] = dateStr.split('-').map(Number);
-  const dt = new Date(y, m - 1, d, 9, 0, 0);
-  return dt.toISOString();
-}
-
 export default function AddSessionModal({ prefill, onClose, onSaved }: Props) {
   const [date, setDate] = useState(todayDateStr());
+  const [startTime, setStartTime] = useState(() => {
+    const now = new Date();
+    return `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
+  });
   const [taskLabel, setTaskLabel] = useState(prefill?.taskLabel ?? '');
   const [hours, setHours] = useState(0);
   const [minutes, setMinutes] = useState(30);
@@ -79,11 +71,14 @@ export default function AddSessionModal({ prefill, onClose, onSaved }: Props) {
     const totalSec = hours * 3600 + minutes * 60;
     if (!taskLabel.trim()) { setError('Task label required.'); return; }
     if (totalSec <= 0) { setError('Duration must be greater than zero.'); return; }
+    const start = sessionStartTime(date, startTime);
+    if (!start) { setError('Enter a valid date and start time.'); return; }
+    if (date > todayDateStr()) { setError('Session date cannot be in the future.'); return; }
     setSaving(true);
     const res = await window.zenstate.addSession({
       taskLabel: taskLabel.trim(),
       duration: totalSec,
-      startTime: makeStartTime(date),
+      startTime: start,
       notes: notes.trim() || undefined,
       basecamp: linkState ?? null,
     }).catch((e) => ({ ok: false as const, error: (e as Error).message }));
@@ -146,8 +141,8 @@ export default function AddSessionModal({ prefill, onClose, onSaved }: Props) {
           )}
         </div>
 
-        {/* Duration + Date side-by-side */}
-        <div style={{ display: 'flex', gap: 16, marginBottom: 12 }}>
+        {/* Duration */}
+        <div style={{ marginBottom: 12 }}>
           <div>
             <label style={{ fontSize: 11, color: 'var(--zen-secondary-text)', display: 'block', marginBottom: 4 }}>Duration</label>
             <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
@@ -179,17 +174,11 @@ export default function AddSessionModal({ prefill, onClose, onSaved }: Props) {
               </div>
             </div>
           </div>
-          <div>
-            <label style={{ fontSize: 11, color: 'var(--zen-secondary-text)', display: 'block', marginBottom: 4 }}>Date</label>
-            <input
-              type="date"
-              value={date}
-              onChange={(e) => setDate(e.target.value)}
-              max={todayDateStr()}
-              className="text-input"
-              style={{ padding: '6px 8px', fontSize: 13, fontFamily: 'inherit' }}
-            />
-          </div>
+        </div>
+
+        <SessionDateTimeFields date={date} time={startTime} onDateChange={setDate} onTimeChange={setStartTime} />
+        <div id="session-start-time-help" style={{ fontSize: 11, color: 'var(--zen-tertiary-text)', marginBottom: 12, lineHeight: 1.5 }}>
+          When you started working, in your local time. Start time is saved only in ZenState.
         </div>
 
         {/* Notes */}

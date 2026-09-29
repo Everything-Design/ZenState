@@ -937,3 +937,32 @@ a,
 .calendar-day {
   -webkit-app-region: no-drag;
 }
+
+/* Session date/time pickers share the dashboard's surfaces and selection color. */
+.session-date-time { position: relative; display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 4px; }
+.session-date-time label { display: block; margin-bottom: 4px; font-size: var(--text-xs); color: var(--zen-secondary-text); }
+.session-picker-trigger { display: flex; align-items: center; justify-content: space-between; gap: 8px; width: 100%; padding: 8px 10px; background: var(--zen-tertiary-bg); color: var(--zen-text); border: 1px solid var(--zen-divider); border-radius: var(--radius-sm); font: inherit; cursor: pointer; }
+.session-picker-trigger svg { color: var(--zen-secondary-text); }
+.session-picker-trigger:hover, .session-picker-trigger[aria-expanded="true"] { background: var(--zen-hover); border-color: var(--zen-primary); }
+.session-picker-panel { position: absolute; bottom: calc(100% + 8px); left: 0; z-index: 2; width: 280px; max-width: 100%; padding: 16px; border: 1px solid var(--zen-divider); border-radius: var(--radius-lg); background: #28282a; box-shadow: var(--shadow-lg); }
+.session-picker-heading { display: flex; align-items: center; justify-content: space-between; min-height: 28px; margin-bottom: 12px; font-size: var(--text-base); font-weight: 600; }
+.session-picker-nav { display: flex; gap: 4px; }
+.session-picker-nav button, .session-picker-calendar button, .session-period-options button { display: flex; align-items: center; justify-content: center; border: 0; border-radius: 6px; background: transparent; color: var(--zen-secondary-text); font: inherit; cursor: pointer; }
+.session-picker-nav button { width: 28px; height: 28px; }
+.session-picker-calendar { display: grid; grid-template-columns: repeat(7, 1fr); gap: 3px; }
+.session-picker-weekday { padding-bottom: 6px; text-align: center; font-size: 10px; color: var(--zen-secondary-text); }
+.session-picker-calendar button { height: 30px; font-size: var(--text-sm); color: var(--zen-text); }
+.session-picker-calendar button[aria-current="date"] { box-shadow: inset 0 0 0 1px var(--zen-primary); }
+.session-picker-panel button:disabled { opacity: .3; cursor: default; }
+.session-picker-nav button:hover:not(:disabled), .session-picker-calendar button:hover:not(:disabled), .session-period-options button:hover { background: var(--zen-hover); color: var(--zen-text); }
+.session-picker-calendar button[aria-pressed="true"], .session-period-options button[aria-pressed="true"] { background: var(--zen-primary); color: white; }
+.session-picker-footer { display: flex; justify-content: flex-end; gap: 8px; margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--zen-divider); }
+.session-picker-footer .btn { padding: 6px 12px; font-size: var(--text-sm); }
+
+.session-time-entry { display: flex; align-items: center; gap: 4px; height: 37px; padding: 4px 8px; border: 1px solid var(--zen-divider); border-radius: var(--radius-sm); background: var(--zen-tertiary-bg); color: var(--zen-secondary-text); }
+.session-time-entry:focus-within { border-color: var(--zen-primary); }
+.session-time-entry input { width: 26px; min-width: 0; padding: 4px 0; border: 0; border-radius: 4px; background: transparent; color: var(--zen-text); text-align: center; font: var(--text-base) var(--font-mono); }
+.session-time-entry input[aria-invalid="true"] { box-shadow: inset 0 -1px var(--status-focused); }
+.session-period-options { display: flex; gap: 2px; margin-left: auto; padding-left: 8px; border-left: 1px solid var(--zen-divider); }
+.session-period-options button { padding: 4px 6px; font-size: var(--text-xs); }
+.session-date-time button:focus-visible, .session-time-entry input:focus-visible { outline: 2px solid var(--zen-primary); outline-offset: 2px; }
