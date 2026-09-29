@@ -1,6 +1,17 @@
 # Desktop release validation
 
-Stable [v5.8.4](https://github.com/Everything-Design/ZenState/releases/tag/v5.8.4) was published on 2026-09-17 with all 16 verified assets and release notes. Earlier candidate/test-build results below are historical. Do not publish individual platform files to a live release before the complete release set is verified.
+Stable [v5.8.5](https://github.com/Everything-Design/ZenState/releases/tag/v5.8.5) is published with all 16 verified assets and release notes. Earlier release and candidate/test-build results below are historical. Do not publish individual platform files to a live release before the complete release set is verified.
+
+## Stable v5.8.5 release validation
+
+- Release tag and published assets correspond to commit `e542cf9a208d3c1b10941bc418314382b71dfaea`. All 23 automated tests, both TypeScript configurations, production builds and the Plan/Timesheet time-entry UI checks passed.
+- [Build run 36612336459](https://github.com/Everything-Design/ZenState/actions/runs/36612336459) passed all platform builds and combined artifact verification. The published Mac packages were built locally with the existing Apple Development identity; both architectures passed signature, DMG, ZIP and packaged-source checks.
+- Windows packaged-source equality passed on its native CI runner. Comparing that package with the local Mac build found only Windows line endings and blank HTML lines. Linux AppImage and Debian payloads match each other and the tested local build.
+- Complete stable manifest verification passed for Windows, both Mac architectures and Linux. All 16 uploaded files match their local SHA-256 hashes and sizes.
+- The isolated Mac ARM v5.8.4 → v5.8.5 native upgrade passed download, Squirrel verification, installation, restart and retention of local session/settings. Only test copies were modified with a probe, separate app identifier and disposable profile; production signing requirements match v5.8.4.
+- [Windows update run 36614345279](https://github.com/Everything-Design/ZenState/actions/runs/36614345279) passed from published v5.8.4 to the exact draft installer. [Run 36615289422](https://github.com/Everything-Design/ZenState/actions/runs/36615289422) passed native AppImage and Debian updates, plus Windows, including restart and retained data.
+- Public verification confirmed v5.8.5 is latest stable, its tag matches the tested commit, and all 16 download URLs return HTTP 200 with expected sizes. Evidence is under `dist/release-5.8.5/`.
+- Intel Mac hardware testing and live Basecamp writes were not performed. The existing internal signing policy is unchanged.
 
 ## Automated checks
 
