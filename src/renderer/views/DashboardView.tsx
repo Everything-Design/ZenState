@@ -297,7 +297,7 @@ export default function DashboardView({ currentUser, peers, timerState, records,
             className={`tab-btn ${activeTab === 'allocations' ? 'active' : ''}`}
             onClick={() => setActiveTab('allocations')}
           >
-            <CalendarRange size={16} /> Weekly allocation
+            <CalendarRange size={16} /> Your week
           </button>
           <button
             className={`tab-btn ${activeTab === 'team' ? 'active' : ''}`}
@@ -345,7 +345,7 @@ export default function DashboardView({ currentUser, peers, timerState, records,
         )}
         {activeTab === 'allocations' && (
           <Suspense fallback={<TabLoading />}>
-            <WeeklyAllocationsTab />
+            <WeeklyAllocationsTab records={records} timerState={timerState} onOpenTimesheet={() => setActiveTab('timesheet')} />
           </Suspense>
         )}
         {activeTab === 'team' && (

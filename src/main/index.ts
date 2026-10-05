@@ -1,3 +1,4 @@
+import { fetchWeeklyOverview } from './services/weeklyOverview';
 import { app, BrowserWindow, ipcMain, globalShortcut, Notification, nativeImage, dialog, powerMonitor, crashReporter, shell } from 'electron';
 import fs from 'fs';
 import path from 'path';
@@ -2386,6 +2387,8 @@ function setupIPC() {
     return true;
   });
   ipcMain.handle(IPC.BC_GET_AUTH_STATE, () => basecamp.getAuthState());
+  ipcMain.handle('planning:get-weekly-overview', (_e, week: unknown) =>
+    fetchWeeklyOverview(week, () => basecamp.oauth.getPlanningCredential()));
   ipcMain.handle('planning:get-weekly-allocations', (_e, week: unknown) =>
     fetchWeeklyAllocations(week, () => basecamp.oauth.getPlanningCredential()));
   ipcMain.handle(IPC.BC_CONNECT, async () => {

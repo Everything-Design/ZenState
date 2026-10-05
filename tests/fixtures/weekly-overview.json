@@ -1,0 +1,168 @@
+{
+  "schemaVersion": 1,
+  "projectScope": "personal",
+  "basecampAccountId": "123",
+  "basecampPersonId": "10",
+  "week": {
+    "startDate": "2026-10-05",
+    "endDate": "2026-10-11",
+    "timezone": "Asia/Kolkata"
+  },
+  "generatedAt": "2026-10-07T08:00:00.000Z",
+  "planningRevision": 0,
+  "planningUpdatedAt": null,
+  "basecampSync": {
+    "lastSuccessfulAt": "2026-10-07T08:00:00.000Z",
+    "importedFrom": "2026-01-01",
+    "importedThrough": "2026-10-07",
+    "recordedFrom": "2026-10-05",
+    "recordedThrough": "2026-10-07",
+    "latestAttemptStatus": "succeeded",
+    "latestAttemptAt": null,
+    "freshness": "fresh",
+    "staleAfterSeconds": 900,
+    "weekCoverage": "week_to_date",
+    "accessCoverage": "unverified"
+  },
+  "projects": [
+    {
+      "basecampProjectId": "201",
+      "projectName": "Project 201",
+      "allocationStatus": "allocated",
+      "displayGroup": "allocated",
+      "context": [],
+      "plannedHours": 32,
+      "recordedHours": 34,
+      "remainingHours": -2,
+      "allocationUpdatedAt": "2026-10-04T12:00:00Z",
+      "balanceStatus": "provisional",
+      "reasons": [
+        "access_coverage_unverified",
+        "week_to_date"
+      ],
+      "category": "billable",
+      "status": "active",
+      "expectedEnd": "2026-11-01",
+      "progress": {
+        "percent": 45,
+        "date": "2026-10-06"
+      }
+    },
+    {
+      "basecampProjectId": "202",
+      "projectName": "Project 202",
+      "allocationStatus": "allocated",
+      "displayGroup": "allocated",
+      "context": [],
+      "plannedHours": 8,
+      "recordedHours": 4,
+      "remainingHours": 4,
+      "allocationUpdatedAt": "2026-10-04T12:00:00Z",
+      "balanceStatus": "provisional",
+      "reasons": [
+        "access_coverage_unverified",
+        "week_to_date"
+      ],
+      "category": "growth",
+      "status": "active",
+      "expectedEnd": "2026-11-01",
+      "progress": null
+    },
+    {
+      "basecampProjectId": "204",
+      "projectName": "Project 204",
+      "allocationStatus": "explicit_zero",
+      "displayGroup": "allocated",
+      "context": [],
+      "plannedHours": 0,
+      "recordedHours": 0,
+      "remainingHours": 0,
+      "allocationUpdatedAt": "2026-10-04T12:00:00Z",
+      "balanceStatus": "provisional",
+      "reasons": [
+        "access_coverage_unverified",
+        "week_to_date"
+      ],
+      "category": "billable",
+      "status": "active",
+      "expectedEnd": "2026-11-01",
+      "progress": null
+    },
+    {
+      "basecampProjectId": "203",
+      "projectName": "Project 203",
+      "allocationStatus": "none",
+      "displayGroup": "other_recorded",
+      "context": [
+        "no_weekly_allocation"
+      ],
+      "plannedHours": null,
+      "recordedHours": 2,
+      "remainingHours": null,
+      "allocationUpdatedAt": null,
+      "balanceStatus": "provisional",
+      "reasons": [
+        "access_coverage_unverified",
+        "week_to_date"
+      ],
+      "category": "billable",
+      "status": "active",
+      "expectedEnd": "2026-11-01",
+      "progress": null
+    }
+  ],
+  "canonicalPersonId": "10",
+  "totals": [
+    {
+      "category": "billable",
+      "plannedHours": 32,
+      "loggedHours": 36,
+      "targetHours": 21.6
+    },
+    {
+      "category": "growth",
+      "plannedHours": 8,
+      "loggedHours": 4,
+      "targetHours": 14.4
+    }
+  ],
+  "capacity": [
+    {
+      "weekStart": "2026-10-05",
+      "availableHours": 36,
+      "plannedHours": 40,
+      "tentativeHours": 0,
+      "freeHours": 0,
+      "overallocatedHours": 4
+    },
+    {
+      "weekStart": "2026-10-12",
+      "availableHours": 40,
+      "plannedHours": 0,
+      "tentativeHours": 0,
+      "freeHours": 40,
+      "overallocatedHours": 0
+    }
+  ],
+  "leave": [
+    {
+      "date": "2026-10-06",
+      "hours": 4,
+      "kind": "leave",
+      "half": "second",
+      "plannedHours": 40,
+      "conflict": true
+    }
+  ],
+  "onBreak": false,
+  "needsYou": [
+    {
+      "id": "own",
+      "kind": "request",
+      "text": "Review the brief",
+      "date": "2026-10-05"
+    }
+  ],
+  "needsYouAsOf": "2026-10-07",
+  "historicalPlan": false
+}

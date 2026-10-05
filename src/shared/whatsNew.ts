@@ -20,6 +20,17 @@ export interface ReleaseHighlight {
 
 export const RELEASE_HIGHLIGHTS: ReleaseHighlight[] = [
   {
+    version: '5.8.6',
+    title: 'Your week, in one place',
+    intro: 'A personal overview from Everything Ops, alongside your time tracking.',
+    bullets: [
+      'See Billable and Growth time with your planned hours, logged time and leave-adjusted targets.',
+      'Check available capacity for this week and next, plus each project’s allocation and reported progress.',
+      'Keep track of your requests, reminders and leave, with a link to open Everything Ops.',
+      'Browse past and upcoming weeks. Local unposted sessions stay separate from Ops totals.',
+    ],
+  },
+  {
     version: '5.8.5',
     title: 'Log time when the work actually happened',
     intro: 'Choose the start time when adding a session after finishing a task.',

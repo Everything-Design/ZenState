@@ -1,6 +1,6 @@
 {
   "name": "zenstate",
-  "version": "5.8.5",
+  "version": "5.8.6",
   "description": "ZenState - Everything Flow",
   "main": "dist/main/index.js",
   "scripts": {
@@ -13,7 +13,7 @@
     "dist": "npm run build && electron-builder --publish never",
     "dist:mac": "npm run build && electron-builder --mac --publish never",
     "dist:win": "npm run build && electron-builder --win --publish never",
-    "test:allocations": "tsc src/main/services/weeklyAllocations.ts src/shared/weeklyAllocations.ts --outDir .test-weekly --rootDir src --module commonjs --target es2022 --skipLibCheck --strict && node --test tests/weekly-allocations.test.cjs",
+    "test:allocations": "tsc src/main/services/weeklyOverview.ts src/shared/weeklyOverview.ts src/main/services/weeklyAllocations.ts src/shared/weeklyAllocations.ts --outDir .test-weekly --rootDir src --module commonjs --target es2022 --skipLibCheck --strict && node --test tests/weekly-allocations.test.cjs tests/weekly-overview.test.cjs",
     "dist:linux": "npm run build && electron-builder --linux deb AppImage --x64 --publish never",
     "test": "npm run build:main && npm run test:allocations && node --test tests/release-safety.test.cjs tests/release-artifacts.test.cjs",
     "verify:release": "node scripts/verify-release.cjs",

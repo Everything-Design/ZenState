@@ -1,3 +1,4 @@
+import type { WeeklyOverviewResult } from '../shared/weeklyOverview';
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { User, AvailabilityStatus, DailyRecord, IPC, AppSettings, LicenseState, BasecampAuthState, BasecampCredentials, BasecampProject, BasecampTodoList, BasecampTodo, BasecampTimesheetEntry, BasecampPerson, BasecampNotification, TodayPlan, PinnedTodo, RecentTodo, PeerGroup, ReceivedPing } from '../shared/types';
 import DashboardView from './views/DashboardView';
@@ -69,6 +70,7 @@ declare global {
       bcCancelConnect: () => Promise<boolean>;
       bcDisconnect: () => Promise<BasecampAuthState>;
       bcGetAuthState: () => Promise<BasecampAuthState>;
+      getWeeklyOverview: (week: string) => Promise<WeeklyOverviewResult>;
       getWeeklyAllocations: (week: string) => Promise<WeeklyAllocationResult>;
       bcListProjects: () => Promise<{ ok: boolean; data?: BasecampProject[]; error?: string }>;
       bcListTodoLists: (projectId: number, todoSetId: number) => Promise<{ ok: boolean; data?: BasecampTodoList[]; error?: string }>;

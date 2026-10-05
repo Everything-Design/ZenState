@@ -191,6 +191,7 @@ contextBridge.exposeInMainWorld('zenstate', {
   bcCancelConnect: () => ipcRenderer.invoke(IPC.BC_CANCEL_CONNECT),
   bcDisconnect: () => ipcRenderer.invoke(IPC.BC_DISCONNECT),
   bcGetAuthState: () => ipcRenderer.invoke(IPC.BC_GET_AUTH_STATE),
+  getWeeklyOverview: (week: string) => ipcRenderer.invoke('planning:get-weekly-overview', week),
   getWeeklyAllocations: (week: string) => ipcRenderer.invoke('planning:get-weekly-allocations', week),
   bcListProjects: () => ipcRenderer.invoke(IPC.BC_LIST_PROJECTS),
   bcListTodoLists: (projectId: number, todoSetId: number) => ipcRenderer.invoke(IPC.BC_LIST_TODO_LISTS, { projectId, todoSetId }),

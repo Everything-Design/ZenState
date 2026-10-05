@@ -1,5 +1,9 @@
 # Desktop release validation
 
+## v5.8.6 release candidate
+
+Your week was approved after local testing. The local test-build notice and sample preview have been removed. All 27 automated tests, both TypeScript configurations, production renderer build and overview UI checks passed. Cross-platform artifacts and native update checks are being prepared; v5.8.5 remains published until they pass.
+
 Stable [v5.8.5](https://github.com/Everything-Design/ZenState/releases/tag/v5.8.5) is published with all 16 verified assets and release notes. Earlier release and candidate/test-build results below are historical. Do not publish individual platform files to a live release before the complete release set is verified.
 
 ## Stable v5.8.5 release validation
