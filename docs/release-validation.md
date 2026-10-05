@@ -1,10 +1,18 @@
 # Desktop release validation
 
-## v5.8.6 release candidate
+## Stable v5.8.6 release validation
 
-Your week was approved after local testing. The local test-build notice and sample preview have been removed. All 27 automated tests, both TypeScript configurations, production renderer build and overview UI checks passed. Cross-platform artifacts and native update checks are being prepared; v5.8.5 remains published until they pass.
+[ZenState v5.8.6](https://github.com/Everything-Design/ZenState/releases/tag/v5.8.6) is published with all 16 verified assets. The personal Your week overview was approved after local testing; the local test-build notice and sample preview have been removed. Earlier release and candidate results below are historical.
 
-Stable [v5.8.5](https://github.com/Everything-Design/ZenState/releases/tag/v5.8.5) is published with all 16 verified assets and release notes. Earlier release and candidate/test-build results below are historical. Do not publish individual platform files to a live release before the complete release set is verified.
+- Release tag and installers correspond to commit `bdcbbad3ce98ad0db3ec0ff40f48fe33ad5cd7ef`. All 27 automated tests, both TypeScript configurations, production renderer build and overview UI checks passed.
+- [Build run 37339558578](https://github.com/Everything-Design/ZenState/actions/runs/37339558578) passed all platform builds, packaged-source checks and combined artifact verification. Published Mac packages were built locally with the existing Apple Development identity; both architectures passed deep/strict signature, disk-image and packaged-source checks.
+- Complete stable manifest verification passed for Windows, both Mac architectures and Linux. All 16 published files match their local SHA-256 hashes and sizes.
+- The isolated Mac ARM v5.8.5 to v5.8.6 native upgrade passed download, Squirrel verification, installation, restart and retention of local session/settings. Only test copies used a probe, separate app identifier and disposable profile; production signing requirements match v5.8.5.
+- [Native update run 37345668004](https://github.com/Everything-Design/ZenState/actions/runs/37345668004) passed Windows v5.8.5 to the exact draft installer and Linux AppImage/Debian updates from isolated earlier-version fixtures. Each test confirmed restart and retained session/settings. The same run also passed all platform builds and combined verification.
+- Public verification confirmed v5.8.6 is latest stable, its tag matches the tested commit, and all 16 download URLs return HTTP 200 with expected sizes. Release evidence and native update results are saved under `dist/release-5.8.6/`.
+- Intel Mac hardware testing and live Basecamp writes were not performed. The existing internal signing policy is unchanged.
+
+Do not publish individual platform files to a live release before the complete release set is verified.
 
 ## Stable v5.8.5 release validation
 
