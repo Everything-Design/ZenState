@@ -1,6 +1,6 @@
 import React, { useState, useEffect, Suspense, lazy } from 'react';
-import { Users, ClipboardList, Settings, MessageCircle, CalendarDays, CalendarRange, Clock } from 'lucide-react';
-import { User, AvailabilityStatus, DailyRecord, LicenseState } from '../../shared/types';
+import { Users, ClipboardList, Settings, MessageCircle, CalendarDays, CalendarRange } from 'lucide-react';
+import { User, AvailabilityStatus, DailyRecord, LicenseState, sessionNeedsBasecampReview } from '../../shared/types';
 import Avatar from '../components/Avatar';
 import { formatRevertTime } from '../utils/format';
 import { getStatusColor, getStatusLabel } from '../utils/status';
@@ -14,10 +14,6 @@ const TeamTab = lazy(() => import('./dashboard/TeamTab'));
 const TimesheetTab = lazy(() => import('./dashboard/TimesheetTab'));
 const SettingsTab = lazy(() => import('./dashboard/SettingsTab'));
 const WeeklyAllocationsTab = lazy(() => import('./dashboard/WeeklyAllocationsTab'));
-// v5.8.0 — Team time tracking surface. Lazy-loaded like the other secondary
-// tabs; nav button only rendered for BC account admins, so non-admins never
-// download the chunk in the first place.
-const TeamTimeTab = lazy(() => import('./dashboard/TeamTimeTab'));
 
 // Lightweight fallback while a tab chunk loads. Centred, low-noise.
 function TabLoading() {
@@ -61,21 +57,11 @@ const REVERT_OPTIONS = [
   { label: 'None', seconds: 0 },
 ];
 
-type Tab = 'plan' | 'allocations' | 'team' | 'timesheet' | 'teamtime' | 'settings';
+type Tab = 'plan' | 'allocations' | 'team' | 'timesheet' | 'settings';
 
 export default function DashboardView({ currentUser, peers, timerState, records, statusRevertRemaining, requestedTab, isPro, licenseState, onLicenseStateChange, onRequestedTabHandled, onRefreshRecords, onStatusChange, onUserUpdate, onSignOut }: Props) {
   const [activeTab, setActiveTab] = useState<Tab>('plan');
-  // v5.8.0 — BC account-admin flag. Drives whether the Team time tab nav
-  // button + content are shown. Fetched once on mount via bcGetMe; failures
-  // (not connected, transient) fall back to non-admin (safe default).
-  const [bcAdmin, setBcAdmin] = useState<boolean>(false);
-  useEffect(() => {
-    (window.zenstate as unknown as { bcGetMe?: () => Promise<{ ok: boolean; data?: { admin?: boolean }; error?: string }> })
-      .bcGetMe?.()
-      .then((res) => { if (res?.ok) setBcAdmin(!!res.data?.admin); })
-      .catch(() => { /* non-admin fallback */ });
-  }, []);
-
+  const unpostedCount = records.reduce((count, record) => count + record.sessions.filter(sessionNeedsBasecampReview).length, 0);
   useEffect(() => {
     if (!requestedTab) return;
     // Legacy "today" requests (from older code paths or notifications) still
@@ -311,15 +297,6 @@ export default function DashboardView({ currentUser, peers, timerState, records,
           >
             <ClipboardList size={16} /> Timesheet
           </button>
-          {bcAdmin && (
-            <button
-              className={`tab-btn ${activeTab === 'teamtime' ? 'active' : ''}`}
-              onClick={() => setActiveTab('teamtime')}
-              title="Per-person time tracking across pinned projects (admin only)"
-            >
-              <Clock size={16} /> Team time
-            </button>
-          )}
           <button
             className={`tab-btn ${activeTab === 'settings' ? 'active' : ''}`}
             onClick={() => setActiveTab('settings')}
@@ -335,6 +312,13 @@ export default function DashboardView({ currentUser, peers, timerState, records,
       <div className="dashboard-content">
         {/* Drag strip at top for window dragging */}
         <div className="drag-strip" />
+        {unpostedCount > 0 && <div
+          style={{ display: 'flex', alignItems: 'center', gap: 12, width: '100%', padding: '9px 14px', marginBottom: 12,
+            border: '1px solid var(--status-occupied)', borderRadius: 8, background: 'var(--zen-tertiary-bg)',
+            color: 'var(--zen-text)', fontFamily: 'inherit', fontSize: 12, boxSizing: 'border-box' }}>
+          <span style={{ flex: 1 }}>{unpostedCount} recorded time {unpostedCount === 1 ? 'session is' : 'sessions are'} waiting to sync with Basecamp.</span>
+          <button className="btn btn-primary" onClick={() => setActiveTab('timesheet')}>Sync Basecamp</button>
+        </div>}
         {activeTab === 'plan' && (
           <PlanTab
             timerState={timerState}
@@ -360,11 +344,6 @@ export default function DashboardView({ currentUser, peers, timerState, records,
               isPro={isPro}
               onRefreshRecords={onRefreshRecords}
             />
-          </Suspense>
-        )}
-        {activeTab === 'teamtime' && bcAdmin && (
-          <Suspense fallback={<TabLoading />}>
-            <TeamTimeTab />
           </Suspense>
         )}
         {activeTab === 'settings' && (

@@ -940,7 +940,7 @@ a,
 
 /* Session date/time pickers share the dashboard's surfaces and selection color. */
 .session-date-time { position: relative; display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 4px; }
-.session-date-time label { display: block; margin-bottom: 4px; font-size: var(--text-xs); color: var(--zen-secondary-text); }
+.session-date-time label, .session-time-field label { display: block; margin-bottom: 4px; font-size: var(--text-xs); color: var(--zen-secondary-text); }
 .session-picker-trigger { display: flex; align-items: center; justify-content: space-between; gap: 8px; width: 100%; padding: 8px 10px; background: var(--zen-tertiary-bg); color: var(--zen-text); border: 1px solid var(--zen-divider); border-radius: var(--radius-sm); font: inherit; cursor: pointer; }
 .session-picker-trigger svg { color: var(--zen-secondary-text); }
 .session-picker-trigger:hover, .session-picker-trigger[aria-expanded="true"] { background: var(--zen-hover); border-color: var(--zen-primary); }

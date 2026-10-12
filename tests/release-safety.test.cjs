@@ -92,12 +92,13 @@ test('actual main-process quit handler keeps timers, confirmation and writes ali
   const start=source.indexOf('function recordingBlockReason()');
   const end=source.indexOf('// v5.3.2',start);
   assert.ok(start>0 && end>start);
-  for(const busy of ['running','paused','confirmation','write']) {
+  for(const busy of ['running','paused','confirmation','write','posting']) {
     let quit,prevented=0,notices=0,destroyed=0,stopped=0,unregistered=0;
     const window={isDestroyed:()=>false,setClosable:()=>{},destroy:()=>destroyed++};
     const context=vm.createContext({
       timerIsRunning:busy==='running',timerIsPaused:busy==='paused',
       pendingTimesheetEntry:busy==='confirmation'?{}:null,
+      postingSessionIds:busy==='posting'?new Set(['s1']):new Set(),
       basecamp:{api:{hasPendingWrites:busy==='write'}},isQuitting:false,
       electron_1:{app:{on:(event,fn)=>{assert.equal(event,'before-quit');quit=fn}},
         dialog:{showMessageBox:async()=>{notices++;return {response:0}}},
@@ -112,6 +113,7 @@ test('actual main-process quit handler keeps timers, confirmation and writes ali
     await new Promise(resolve=>setImmediate(resolve));
     context.timerIsRunning=false;context.timerIsPaused=false;
     context.pendingTimesheetEntry=null;context.basecamp.api.hasPendingWrites=false;
+    context.postingSessionIds.clear();
     quit(event);
     assert.equal(prevented,2);assert.equal(context.isQuitting,true);
     assert.equal(destroyed,1);assert.equal(stopped,1);assert.equal(unregistered,1);
@@ -143,10 +145,13 @@ test('local records survive reload, edits preserve Basecamp identity, and old un
     const p=new PersistenceService();const {TimeTracker}=load('main/services/timeTracker.js');const tracker=new TimeTracker(p);
     const start=new Date();start.setDate(start.getDate()-120);const end=new Date(start.getTime()+60000);
     const saved=tracker.addSession({taskLabel:'Offline test',duration:60,startTime:start.toISOString(),endTime:end.toISOString(),basecamp:{accountId:1,projectId:2,todoId:3,synced:false}});
-    tracker.updateSession(saved.sessionId,saved.dateStr,{duration:120,notes:'Keep me'});
+    const revisedStart=new Date(start.getTime()+3600000).toISOString();
+    tracker.updateSession(saved.sessionId,saved.dateStr,{duration:120,notes:'Keep me',startTime:revisedStart});
     const Reloaded=load('main/services/persistence.js',mocks).PersistenceService;
     const stored=new Reloaded().getRecords();assert.equal(stored.length,1);assert.equal(stored[0].totalFocusTime,120);
     assert.equal(stored[0].sessions[0].basecamp.todoId,3);assert.equal(stored[0].sessions[0].notes,'Keep me');
+    assert.equal(stored[0].sessions[0].startTime,revisedStart);
+    assert.equal(stored[0].sessions[0].endTime,new Date(new Date(revisedStart).getTime()+120000).toISOString());
     tracker.deleteSession(saved.sessionId,saved.dateStr);assert.equal(tracker.findSession(saved.sessionId,saved.dateStr),null);
   } finally {fs.rmSync(dir,{recursive:true,force:true})}
 });
@@ -184,12 +189,13 @@ test('manual session start times stay local, persist across midnight, and never 
     const tracker = new TimeTracker({getRecords:()=>structuredClone(records),saveRecords:value=>{records=structuredClone(value)}});
     const source = fs.readFileSync('dist/main/index.js','utf8');
     const start = source.indexOf('electron_1.ipcMain.handle(types_1.IPC.ADD_SESSION,');
-    const end = source.indexOf('// Window management',start);
+    const end = source.indexOf('// Review one locally saved session',start);
     assert.ok(start > 0 && end > start);
     vm.runInNewContext(source.slice(start,end), {
       electron_1:{ipcMain:{handle:(_channel,fn)=>{handler=fn}}},
       types_1:{IPC:{ADD_SESSION:'data:add-session'}}, timeTracker:tracker,
       basecamp:{api:{createTimesheetEntry:async data=>{posts.push(data);return {id:42}}}},
+      postingSessionIds:new Set(),
       broadcastToWindows(){}, isoDateLocal:dateStr, Date, console,
     });
     const result = await handler({}, {

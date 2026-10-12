@@ -20,6 +20,17 @@ export interface ReleaseHighlight {
 
 export const RELEASE_HIGHLIGHTS: ReleaseHighlight[] = [
   {
+    version: '5.9.0',
+    title: 'Capture now, sync when ready',
+    intro: 'Record unexpected work immediately and match it to a Basecamp to-do later.',
+    bullets: [
+      'Start Quick Record Time from the menu, Plan, or the running timer pill with a short note.',
+      'Review unsynced sessions in Timesheet. Select several and sync each as a separate entry on one to-do.',
+      'Search pinned tasks in the menu and choose whether Today and Tomorrow plans stay separate.',
+      'Edit a session’s local start time and keep its recorded duration precise when syncing edits.',
+    ],
+  },
+  {
     version: '5.8.6',
     title: 'Your week, in one place',
     intro: 'A personal overview from Everything Ops, alongside your time tracking.',

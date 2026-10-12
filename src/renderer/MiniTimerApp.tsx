@@ -27,6 +27,7 @@ export default function MiniTimerApp() {
   const [dimmed, setDimmed] = useState(false);
   const [notes, setNotes] = useState('');
   const [taskSearchText, setTaskSearchText] = useState('');
+  const [quickNote, setQuickNote] = useState('');
   // Meeting mode — suppresses idle pause for the active session. Toggled
   // from the Notes header in this panel; main process owns the source of
   // truth and broadcasts changes (so the in-meeting "I'm in a meeting" path
@@ -184,8 +185,8 @@ export default function MiniTimerApp() {
       // Item rows + "Today" heading (~24px) + bottom button (~32px).
       // Search bar (~34px) is only rendered when switchableCount > 0.
       const switcherHeight = switchableCount > 0
-        ? 24 + 50 * switchableCount + folderHeadersH + 16 + 34 + 32
-        : 56 + 32;
+        ? 24 + 50 * switchableCount + folderHeadersH + 16 + 34 + 76
+        : 56 + 76;
       const height = Math.min(540, COMPACT_H + projectBannerH + NOTES_SECTION_H + switcherHeight);
       window.zenstate.miniTimerResize({ width: EXPANDED_W, height });
     } else {
@@ -202,8 +203,8 @@ export default function MiniTimerApp() {
     }
   }, [timer.isRunning, expanded]);
 
-  // ── Search input ref for auto-focus on expand ─────────────────
-  const searchInputRef = useRef<HTMLInputElement>(null);
+  // ── Quick Record Time input ref for auto-focus on expand ──────
+  const quickNoteRef = useRef<HTMLInputElement>(null);
 
   // ── Drag + click on the pill body ────────────────────────────
   // We can't use macOS' -webkit-app-region: drag here because that swallows
@@ -277,6 +278,15 @@ export default function MiniTimerApp() {
     window.zenstate.miniTimerResize({ width: COMPACT_W, height: COMPACT_H });
   }, [timer.isRunning, flushNotes, setTaskSearchText]);
 
+  const switchToQuick = useCallback(() => {
+    if (!quickNote.trim()) return;
+    flushNotes();
+    window.zenstate.quickRecordTime(quickNote);
+    setQuickNote('');
+    setExpanded(false);
+    window.zenstate.miniTimerResize({ width: COMPACT_W, height: COMPACT_H });
+  }, [quickNote, flushNotes]);
+
   // ── Render ────────────────────────────────────────────────────
   const accent = timer.isPaused ? 'var(--status-occupied, #ff9500)' : 'var(--status-available, #34c759)';
   const label = timer.taskLabel || 'No task';
@@ -300,11 +310,9 @@ export default function MiniTimerApp() {
     return match?.projectName;
   }, [plan?.items, timer.basecampTodoId, timer.taskLabel]);
 
-  // Auto-focus the search input when the panel expands and there are tasks.
+  // Put the next keystroke into Quick Record Time when the panel opens.
   useEffect(() => {
-    if (expanded && switchablePinned.length > 0) {
-      searchInputRef.current?.focus();
-    }
+    if (expanded) quickNoteRef.current?.focus();
   }, [expanded]);
 
   const filteredSwitchablePinned = React.useMemo(() => {
@@ -523,6 +531,14 @@ export default function MiniTimerApp() {
           >
             + Pin another to-do
           </button>
+          <div style={{ display: 'flex', gap: 5, margin: '6px 12px' }}>
+            <input ref={quickNoteRef} aria-label="Quick Record Time note" placeholder="Quick Record Time note"
+              value={quickNote} maxLength={120} onChange={(e) => setQuickNote(e.target.value)}
+              onKeyDown={(e) => { if (e.key === 'Enter') switchToQuick(); }}
+              style={{ flex: 1, minWidth: 0, padding: '5px 7px', borderRadius: 5, border: '1px solid rgba(255,255,255,0.12)', background: 'rgba(255,255,255,0.04)', color: '#e6edf3', fontSize: 10 }} />
+            <button disabled={!quickNote.trim()} onClick={switchToQuick}
+              style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 3, width: 68, height: 22, boxSizing: 'border-box', border: '1px solid transparent', borderRadius: 6, padding: '4px 9px', background: 'var(--zen-primary)', color: 'white', cursor: quickNote.trim() ? 'pointer' : 'not-allowed', opacity: quickNote.trim() ? 1 : 0.45, fontSize: 10, fontWeight: 600, fontFamily: 'inherit', flexShrink: 0 }}><Play size={9} fill="currentColor" strokeWidth={1} /> Start</button>
+          </div>
 
           {switchablePinned.length === 0 ? (
             <div style={{ padding: '14px 12px', fontSize: 11, color: 'rgba(230,237,243,0.55)', textAlign: 'center', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6 }}>
@@ -534,7 +550,6 @@ export default function MiniTimerApp() {
               <div style={{ padding: '4px 12px 6px', position: 'relative' }}>
                 <Search size={10} style={{ position: 'absolute', left: 20, top: '50%', transform: 'translateY(-50%)', opacity: 0.4 }} />
                 <input
-                  ref={searchInputRef}
                   aria-label="Search pinned tasks"
                   placeholder="Search pinned tasks..."
                   value={taskSearchText}
@@ -709,6 +724,7 @@ function SwitchRow({ title, subtitle, onClick }: { title: string; subtitle?: str
         title={`Switch timer to "${title}"`}
         style={{
           display: 'inline-flex', alignItems: 'center', gap: 3,
+          justifyContent: 'center', width: 68, height: 22, boxSizing: 'border-box',
           padding: '4px 9px',
           background: 'rgba(48, 209, 88, 0.18)',
           border: '1px solid rgba(48, 209, 88, 0.32)',
@@ -721,7 +737,7 @@ function SwitchRow({ title, subtitle, onClick }: { title: string; subtitle?: str
         onMouseEnter={(e) => { e.currentTarget.style.background = 'rgba(48, 209, 88, 0.28)'; }}
         onMouseLeave={(e) => { e.currentTarget.style.background = 'rgba(48, 209, 88, 0.18)'; }}
       >
-        <Play size={9} /> Switch
+        <Play size={9} fill="currentColor" strokeWidth={1} /> Switch
       </button>
     </div>
   );

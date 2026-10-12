@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useEffect, useCallback } from 'react';
+import React, { useState, useMemo, useEffect, useCallback, useRef } from 'react';
 import { Settings, Timer, LayoutDashboard, MessageCircle, Hourglass, Pin, Play, Megaphone, X, ChevronDown, ChevronRight } from 'lucide-react';
 import { User, AvailabilityStatus, IPC, LicenseState, TodayPlan, PinnedTodo, ReceivedPing, BasecampAuthState } from '../../shared/types';
 import SendPingSheet from '../components/SendPingSheet';
@@ -68,6 +68,10 @@ function getEndOfDay(): string {
 
 export default function MenuBarView({ currentUser, peers, timerState, statusRevertRemaining, isPro, onStatusChange, onUserUpdate, onOpenSettings }: Props) {
   const [searchText, setSearchText] = useState('');
+  const [todaySearch, setTodaySearch] = useState('');
+  const [quickNote, setQuickNote] = useState('');
+  const [quickError, setQuickError] = useState('');
+  const quickNoteRef = useRef<HTMLInputElement>(null);
   const [showStatusMessage, setShowStatusMessage] = useState(false);
   const [statusMessageInput, setStatusMessageInput] = useState('');
   const [statusDuration, setStatusDuration] = useState(DURATION_OPTIONS[0]);
@@ -76,12 +80,8 @@ export default function MenuBarView({ currentUser, peers, timerState, statusReve
   const [messageText, setMessageText] = useState('');
   const [showRevertPicker, setShowRevertPicker] = useState(false);
   const [todayPlan, setTodayPlan] = useState<TodayPlan | null>(null);
-  // Two modes for the popover body: "today" (your plan) vs "team" (peer presence).
-  // Default to Today since that's the daily-ritual surface. A useEffect below
-  // falls through to Team on first open if there are no pinned to-dos but peers
-  // are around.
+  // Today remains the default; Quick Record Time stays above both tabs.
   const [popoverTab, setPopoverTab] = useState<'today' | 'team'>('today');
-  const [tabAutoChosen, setTabAutoChosen] = useState(false);
   const [showPingSheet, setShowPingSheet] = useState(false);
   const [recentPings, setRecentPings] = useState<ReceivedPing[]>([]);
   const [bcConnected, setBcConnected] = useState(false);
@@ -101,6 +101,10 @@ export default function MenuBarView({ currentUser, peers, timerState, statusReve
     // Re-fetch on each tray-show — covers midnight rollover and any IPC that
     // was broadcast while the popover renderer hadn't fully mounted.
     const offShown = window.zenstate.on('popover:shown', () => {
+      setPopoverTab('today');
+      setShowStatusMessage(false);
+      setQuickError('');
+      requestAnimationFrame(() => quickNoteRef.current?.focus());
       window.zenstate.todayGet().then((res) => {
         setTodayPlan(res?.plan ?? null);
       }).catch((e: unknown) => console.warn('[MenuBarView] load failed:', e));
@@ -110,17 +114,6 @@ export default function MenuBarView({ currentUser, peers, timerState, statusReve
     }).catch((e: unknown) => console.warn('[MenuBarView] load failed:', e));
     return () => { offChanged(); offShown(); };
   }, []);
-
-  // First-load default: if Today is empty but peers are around, open on Team.
-  // After the user has manually picked a tab, we leave their choice alone.
-  useEffect(() => {
-    if (tabAutoChosen) return;
-    if (!todayPlan) return; // still loading
-    if (todayPlan.items.length === 0 && peers.length > 0) {
-      setPopoverTab('team');
-    }
-    setTabAutoChosen(true);
-  }, [todayPlan, peers.length, tabAutoChosen]);
 
   // Recent received pings — load on mount and stay subscribed for new ones.
   // Same subscribe-first-then-fetch pattern to avoid clobbering an in-flight
@@ -201,6 +194,18 @@ export default function MenuBarView({ currentUser, peers, timerState, statusReve
 
   const isTimerActive = timerState.isRunning || timerState.isPaused;
 
+  function startQuickTime() {
+    const note = quickNote.trim();
+    if (!note) {
+      setQuickError('Enter what you are working on to start the timer.');
+      quickNoteRef.current?.focus();
+      return;
+    }
+    window.zenstate.quickRecordTime(note);
+    setQuickNote('');
+    setQuickError('');
+  }
+
   // v5.7.0 — Hoisted popover grouping logic. Same shape as TodayTab's
   // folderGroups; the previous in-JSX IIFE recomputed this each render and
   // hid the sortable IDs from the DndContext / SortableContext wrappers.
@@ -238,14 +243,22 @@ export default function MenuBarView({ currentUser, peers, timerState, statusReve
     return ordered;
   }, [todayPlan]);
   const popoverShowHeaders = popoverGroups.length > 1 || (todayPlan?.userFolders ?? []).length > 0;
+  const visiblePopoverGroups = useMemo(() => {
+    const q = todaySearch.trim().toLowerCase();
+    if (!q) return popoverGroups;
+    return popoverGroups.map((group) => ({
+      ...group,
+      items: group.items.filter((item) => `${item.content} ${item.projectName}`.toLowerCase().includes(q)),
+    })).filter((group) => group.items.length > 0);
+  }, [popoverGroups, todaySearch]);
   const popoverSortableIds = useMemo(() => {
     const collapsedMap = todayPlan?.collapsedFolders ?? {};
-    return popoverGroups.flatMap((g) => {
+    return visiblePopoverGroups.flatMap((g) => {
       const header = popoverShowHeaders ? [g.id] : [];
-      const items = collapsedMap[g.id] ? [] : g.items.map((i) => popItemSortableId(i.todoId));
+      const items = !todaySearch && collapsedMap[g.id] ? [] : g.items.map((i) => popItemSortableId(i.todoId));
       return [...header, ...items];
     });
-  }, [popoverGroups, popoverShowHeaders, todayPlan?.collapsedFolders]);
+  }, [visiblePopoverGroups, popoverShowHeaders, todayPlan?.collapsedFolders, todaySearch]);
   const popoverToggleCollapse = useCallback((id: string) => {
     (window.zenstate as unknown as { todayFolderToggleCollapse: (id: string) => Promise<unknown> })
       .todayFolderToggleCollapse(id).catch((e) => console.warn('[MenuBarView] folder toggle failed:', e));
@@ -580,6 +593,23 @@ export default function MenuBarView({ currentUser, peers, timerState, statusReve
         </div>
       )}
 
+      <div style={{ padding: '8px 16px 6px', borderBottom: '1px solid var(--zen-divider)' }}>
+        <div style={{ fontSize: 11, fontWeight: 600, marginBottom: 5 }}>Quick Record Time</div>
+        <div style={{ display: 'flex', gap: 6 }}>
+          <input ref={quickNoteRef} autoFocus className="search-input" aria-label="Quick Record Time note"
+            aria-describedby="quick-time-help" placeholder="What are you working on?"
+            value={quickNote} maxLength={120}
+            onChange={(e) => { setQuickNote(e.target.value); if (quickError) setQuickError(''); }}
+            onKeyDown={(e) => { if (e.key === 'Enter') startQuickTime(); }}
+            style={{ flex: 1, minWidth: 0 }} />
+          <button className="btn btn-primary" disabled={!quickNote.trim()} onClick={startQuickTime}>Start timer</button>
+        </div>
+        <div id="quick-time-help" style={{ fontSize: 10, color: quickError ? 'var(--status-occupied)' : 'var(--zen-secondary-text)', marginTop: 5 }}
+          role={quickError ? 'alert' : undefined}>
+          {quickError || 'Type a short note, then press Enter. You can link the saved time to Basecamp after stopping.'}
+        </div>
+      </div>
+
       {/* Tab bar — segmented control switching the body between Today and Team.
           Status (above) applies to both modes globally; the active timer banner (above)
           stays visible across tabs as important context. */}
@@ -640,6 +670,13 @@ export default function MenuBarView({ currentUser, peers, timerState, statusReve
       {/* TODAY tab content */}
       {popoverTab === 'today' && (
         <>
+          {todayPlan && todayPlan.items.length > 0 && (
+            <div style={{ padding: '4px 16px 6px' }}>
+              <input className="search-input" aria-label="Search today's pinned items"
+                placeholder="Search to-dos or projects..." value={todaySearch}
+                onChange={(e) => setTodaySearch(e.target.value)} style={{ width: '100%', boxSizing: 'border-box' }} />
+            </div>
+          )}
           {todayPlan === null ? (
             // Loading skeleton — avoid flashing the empty state for one render
             // while todayGet() is in flight on first open.
@@ -653,10 +690,11 @@ export default function MenuBarView({ currentUser, peers, timerState, statusReve
                 folder so users with multiple projects don't see one long flat
                 list. Header is suppressed when there's only one resulting
                 group (single-project users see no extra chrome). */}
-                <DndContext sensors={popSensors} collisionDetection={closestCenter} onDragEnd={popDragEnd}>
+                <DndContext sensors={popSensors} collisionDetection={closestCenter} onDragEnd={todaySearch ? undefined : popDragEnd}>
                   <SortableContext items={popoverSortableIds} strategy={verticalListSortingStrategy}>
-                    {popoverGroups.flatMap((group) => {
-                      const isCollapsed = !!(todayPlan?.collapsedFolders ?? {})[group.id];
+                    {visiblePopoverGroups.length === 0 && <div style={{ padding: 12, fontSize: 11, color: 'var(--zen-secondary-text)' }}>No to-dos or projects match “{todaySearch}”.</div>}
+                    {visiblePopoverGroups.flatMap((group) => {
+                      const isCollapsed = !todaySearch && !!(todayPlan?.collapsedFolders ?? {})[group.id];
                       const Chevron = isCollapsed ? ChevronRight : ChevronDown;
                       return [
                       popoverShowHeaders && (

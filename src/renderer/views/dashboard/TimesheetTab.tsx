@@ -3,6 +3,7 @@ import { Pencil, Trash2, FileText, Download, Plus } from 'lucide-react';
 import { DailyRecord, DailySession, IPC, TodayPlan } from '../../../shared/types';
 import SessionEditModal from '../../components/SessionEditModal';
 import AddSessionModal from '../../components/AddSessionModal';
+import UnpostedTimeReview from '../../components/UnpostedTimeReview';
 import Toast, { useToast } from '../../components/Toast';
 // Plain neutral tag for legacy session.category data — no per-category colors anymore.
 const plainCategoryTagStyle: React.CSSProperties = {
@@ -61,7 +62,10 @@ interface DeleteSessionResult {
 function basecampEntryUrl(session: DailySession): string | undefined {
   const bc = session.basecamp;
   if (!bc) return undefined;
-  return `https://3.basecamp.com/${bc.accountId}/buckets/${bc.projectId}/todos/${bc.todoId}`;
+  if (bc.entryId) return `https://3.basecamp.com/${bc.accountId}/projects/${bc.projectId}/timesheet/entries/${bc.entryId}`;
+  return bc.todoId
+    ? `https://3.basecamp.com/${bc.accountId}/buckets/${bc.projectId}/todos/${bc.todoId}`
+    : `https://3.basecamp.com/${bc.accountId}/projects/${bc.projectId}/timesheet`;
 }
 
 function isLegacySession(session: DailySession): boolean {
@@ -104,6 +108,8 @@ export default function TimesheetTab({ records, isPro, onRefreshRecords }: Props
     }
     return m;
   }, [plan?.items]);
+  const projectNameFor = (session: DailySession) => session.basecamp?.projectName
+    || (session.basecamp?.todoId ? projectNameByTodoId.get(session.basecamp.todoId) : undefined);
   const toggleNoteExpansion = (sessionId: string) => {
     setExpandedNotes((prev) => {
       const next = new Set(prev);
@@ -308,6 +314,8 @@ export default function TimesheetTab({ records, isPro, onRefreshRecords }: Props
         </button>
       </div>
 
+      <UnpostedTimeReview records={records} onRefresh={onRefreshRecords} />
+
       {/* Overall Stats */}
       <div className="card">
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12, flexWrap: 'wrap' }}>
@@ -435,9 +443,9 @@ export default function TimesheetTab({ records, isPro, onRefreshRecords }: Props
                   })()}
                 </div>
                 {/* v5.6.3 — Project name from the currently-pinned plan. */}
-                {session.basecamp?.todoId && projectNameByTodoId.get(session.basecamp.todoId) && (
+                {projectNameFor(session) && (
                   <div style={{ fontSize: 10, color: 'var(--zen-tertiary-text)', marginTop: 2, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                    {projectNameByTodoId.get(session.basecamp.todoId)}
+                    {projectNameFor(session)}
                   </div>
                 )}
                 <div style={{ fontSize: 10, color: 'var(--zen-tertiary-text)', marginTop: 2 }}>
@@ -663,9 +671,9 @@ export default function TimesheetTab({ records, isPro, onRefreshRecords }: Props
                       })()}
                     </div>
                     {/* v5.6.3 — Project name from the currently-pinned plan. */}
-                    {session.basecamp?.todoId && projectNameByTodoId.get(session.basecamp.todoId) && (
+                    {projectNameFor(session) && (
                       <div style={{ fontSize: 10, color: 'var(--zen-tertiary-text)', marginTop: 2, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                        {projectNameByTodoId.get(session.basecamp.todoId)}
+                        {projectNameFor(session)}
                       </div>
                     )}
                     <div style={{ fontSize: 10, color: 'var(--zen-tertiary-text)', marginTop: 2 }}>

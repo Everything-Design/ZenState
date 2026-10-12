@@ -1,7 +1,7 @@
 import React, { useEffect, useState, useCallback } from 'react';
 import { Plus, Briefcase, Clock, X, Sunrise } from 'lucide-react';
 import {
-  IPC, TodayPlan, PinnedTodo, RecentTodo,
+  IPC, TodayPlan, PlanReviewItem, PinnedTodo, RecentTodo,
   BasecampAuthState,
 } from '../../../shared/types';
 import { PinPicker } from './TodayTab';
@@ -28,6 +28,8 @@ export default function TomorrowTab({ onOpenSettings }: Props) {
   const [authState, setAuthState] = useState<BasecampAuthState | null>(null);
   const [pickerOpen, setPickerOpen] = useState(false);
   const [editingEstimate, setEditingEstimate] = useState<number | null>(null);
+  const [review, setReview] = useState<PlanReviewItem[]>([]);
+  const [separatePlans, setSeparatePlans] = useState(false);
 
   useEffect(() => {
     let eventArrived = false;
@@ -36,13 +38,14 @@ export default function TomorrowTab({ onOpenSettings }: Props) {
       setPlan(args[0] as TodayPlan);
     });
     // Re-fetch when the window/tab becomes visible. Covers two real cases:
-    // (1) midnight rollover happened while the dashboard was unfocused — the
-    //     plan we're showing is now yesterday's "tomorrow" (which was
-    //     promoted into today). After re-fetch we'll show an empty Tomorrow.
+    // (1) midnight rollover happened while the dashboard was unfocused —
+    //     due items were merged or moved to review.
     // (2) any tomorrow:changed broadcast missed during a state we couldn't
     //     subscribe to (e.g. cross-window race on first mount).
     const onFocus = () => {
       window.zenstate.tomorrowGet().then(setPlan).catch((e: unknown) => console.warn('[TomorrowTab] load failed:', e));
+      window.zenstate.planReviewGet().then(setReview).catch(() => {});
+      window.zenstate.getSettings().then((s) => setSeparatePlans(!!s.separatePlans)).catch(() => {});
     };
     document.addEventListener('visibilitychange', onFocus);
     window.addEventListener('focus', onFocus);
@@ -50,6 +53,8 @@ export default function TomorrowTab({ onOpenSettings }: Props) {
     window.zenstate.tomorrowGet().then((res) => {
       if (!eventArrived) setPlan(res);
     }).catch((e: unknown) => console.warn('[TomorrowTab] load failed:', e));
+    window.zenstate.planReviewGet().then(setReview).catch(() => {});
+    window.zenstate.getSettings().then((s) => setSeparatePlans(!!s.separatePlans)).catch(() => {});
     window.zenstate.recentsGet().then(setRecents).catch((e: unknown) => console.warn('[TomorrowTab] load failed:', e));
     window.zenstate.bcGetAuthState().then(setAuthState).catch((e: unknown) => console.warn('[TomorrowTab] load failed:', e));
     return () => {
@@ -76,6 +81,12 @@ export default function TomorrowTab({ onOpenSettings }: Props) {
     setEditingEstimate(null);
   }, []);
 
+  const moveReviewed = useCallback(async (todoId: number, dueDate: string, target: 'today' | 'tomorrow') => {
+    const next = await window.zenstate.planReviewMove(todoId, dueDate, target);
+    setReview(next);
+    setPlan(await window.zenstate.tomorrowGet());
+  }, []);
+
   return (
     <div className="fade-in" style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-5)', maxWidth: 720, margin: '0 auto', paddingTop: 'var(--space-3)' }}>
       <div>
@@ -89,6 +100,19 @@ export default function TomorrowTab({ onOpenSettings }: Props) {
         </p>
       </div>
 
+      {review.length > 0 && (
+        <section style={{ padding: '12px 16px', border: '1px solid var(--zen-divider)', borderRadius: 8 }}>
+          <h2 style={{ fontSize: 14, margin: '0 0 8px' }}>Review due items · {review.length}</h2>
+          {review.map(({ item, dueDate }) => (
+            <div key={`${dueDate}-${item.todoId}`} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '7px 0', borderTop: '1px solid var(--zen-divider)' }}>
+              <span style={{ flex: 1, fontSize: 12 }}>{item.content}<small style={{ display: 'block', color: 'var(--zen-secondary-text)' }}>{item.projectName} · due {dueDate}</small></span>
+              <button className="btn btn-primary" onClick={() => moveReviewed(item.todoId, dueDate, 'today')}>Move to Today</button>
+              <button className="btn btn-secondary" onClick={() => moveReviewed(item.todoId, dueDate, 'tomorrow')}>Tomorrow</button>
+            </div>
+          ))}
+        </section>
+      )}
+
       <section>
         {!authState?.isConnected ? (
           <EmptyState
@@ -101,7 +125,9 @@ export default function TomorrowTab({ onOpenSettings }: Props) {
           <EmptyState
             icon={<Sunrise size={20} />}
             title="Plan tomorrow tonight"
-            body="Decide a few things you want to start tomorrow morning. They'll be waiting on the Today tab when you open the app."
+            body={separatePlans
+              ? 'Decide a few things for tomorrow. They will wait in Review until you move or reschedule them.'
+              : "Decide a few things for tomorrow. They will be waiting on Today when you open the app."}
             action={<button className="btn btn-primary" onClick={() => setPickerOpen(true)}>Pin a to-do</button>}
           />
         ) : (
@@ -153,7 +179,9 @@ export default function TomorrowTab({ onOpenSettings }: Props) {
         lineHeight: 'var(--leading-relaxed)',
       }}>
         <Sunrise size={14} style={{ flexShrink: 0, marginTop: 1, opacity: 0.7 }} />
-        <span>At midnight, these items move to Today's plan. Anything you didn't finish today carries over with them.</span>
+        <span>{separatePlans
+          ? 'At midnight, these items move to Review. You choose when to move or reschedule them. Unfinished Today work carries forward.'
+          : "At midnight, these items move to Today's plan. Anything you didn't finish today carries over with them."}</span>
       </div>
 
       {pickerOpen && authState?.isConnected && authState.account && (

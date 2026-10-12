@@ -1,6 +1,6 @@
 import type { WeeklyOverviewResult } from '../shared/weeklyOverview';
 import React, { useState, useEffect, useCallback, useRef } from 'react';
-import { User, AvailabilityStatus, DailyRecord, IPC, AppSettings, LicenseState, BasecampAuthState, BasecampCredentials, BasecampProject, BasecampTodoList, BasecampTodo, BasecampTimesheetEntry, BasecampPerson, BasecampNotification, TodayPlan, PinnedTodo, RecentTodo, PeerGroup, ReceivedPing } from '../shared/types';
+import { User, AvailabilityStatus, DailyRecord, DailySession, IPC, AppSettings, LicenseState, BasecampAuthState, BasecampCredentials, BasecampProject, BasecampTodoList, BasecampTodo, BasecampTimesheetEntry, BasecampPerson, BasecampNotification, TodayPlan, PlanReviewItem, PinnedTodo, RecentTodo, PeerGroup, ReceivedPing } from '../shared/types';
 import DashboardView from './views/DashboardView';
 import LoginView from './views/LoginView';
 import WhatsNewModal from './components/WhatsNewModal';
@@ -22,6 +22,7 @@ declare global {
       sendEmergencyRequest: (userId: string, message?: string) => void;
       grantEmergencyAccess: (userId: string, granted: boolean) => void;
       startTimer: (taskLabel: string, category?: string, targetDuration?: number, basecamp?: { accountId: number; projectId: number; todoId: number; todoListId?: number; projectName?: string }) => void;
+      quickRecordTime: (note: string) => void;
       stopTimer: () => void;
       pauseTimer: () => void;
       resumeTimer: () => void;
@@ -34,7 +35,9 @@ declare global {
       getRecords: (month?: string) => Promise<DailyRecord[]>;
       deleteSession: (sessionId: string, date: string) => Promise<{ ok: boolean; basecampDeleted: boolean; hadBasecampLink: boolean; error?: string }>;
       updateSession: (sessionId: string, date: string, updates: unknown) => Promise<{ ok: boolean; basecampSynced: boolean; needsManualFix: boolean; error?: string }>;
-      addSession: (data: { taskLabel: string; duration: number; startTime: string; notes?: string; basecamp?: { accountId: number; projectId: number; todoId: number; todoListId?: number } | null }) => Promise<{ ok: boolean; sessionId?: string; dateStr?: string; error?: string }>;
+      addSession: (data: { taskLabel: string; duration: number; startTime: string; notes?: string; basecamp?: DailySession['basecamp'] | null }) => Promise<{ ok: boolean; sessionId?: string; dateStr?: string; error?: string }>;
+      reconcileSession: (data: { sessionId: string; date: string; projectId: number; todoId?: number; notes: string; duration: number; allowPossibleDuplicate?: boolean }) => Promise<{ ok: boolean; entryId?: number; error?: string }>;
+      reconcileBatch: (data: { sessions: { sessionId: string; date: string }[]; projectId: number; todoId: number }) => Promise<{ ok: boolean; error?: string; results?: { sessionId: string; date: string; ok: boolean; entryId?: number; error?: string }[] }>;
       getAppVersion: () => Promise<string>;
       resetAllData: () => Promise<boolean>;
       installUpdate: () => void;
@@ -97,6 +100,8 @@ declare global {
       todaySetEstimate: (todoId: number, minutes: number | null) => Promise<TodayPlan>;
       todayToggleComplete: (todoId: number) => Promise<TodayPlan>;
       tomorrowGet: () => Promise<TodayPlan>;
+      planReviewGet: () => Promise<PlanReviewItem[]>;
+      planReviewMove: (todoId: number, dueDate: string, target: 'today' | 'tomorrow') => Promise<PlanReviewItem[]>;
       tomorrowPin: (item: PinnedTodo) => Promise<TodayPlan>;
       tomorrowUnpin: (todoId: number) => Promise<TodayPlan>;
       tomorrowReorder: (todoIds: number[]) => Promise<TodayPlan>;

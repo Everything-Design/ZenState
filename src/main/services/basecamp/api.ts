@@ -424,7 +424,8 @@ export class BasecampApi {
   // Create a Basecamp timesheet entry on a recording (to-do).
   // `hours` accepts decimal ("1.5") or H:MM ("1:30") format.
   async createTimesheetEntry(input: {
-    todoId: number;
+    todoId?: number;
+    recordingId?: number;
     date: string;
     hours: string;
     description?: string;
@@ -439,8 +440,10 @@ export class BasecampApi {
     if (input.description) body.description = input.description;
     if (input.personId) body.person_id = input.personId;
 
+    const recordingId = input.recordingId ?? input.todoId;
+    if (!recordingId) throw new Error('A Basecamp recording is required');
     const raw = await this.requestJson<RawTimesheetEntry>(
-      `${this.accountBase()}/recordings/${input.todoId}/timesheet/entries.json`,
+      `${this.accountBase()}/recordings/${recordingId}/timesheet/entries.json`,
       { method: 'POST', body: JSON.stringify(body) },
     );
     return this.mapTimesheetEntry(raw);
@@ -451,6 +454,13 @@ export class BasecampApi {
   async getProjectTimesheet(projectId: number): Promise<BasecampTimesheetEntry[]> {
     const raw = await this.paginate<RawTimesheetEntry>(`${this.accountBase()}/projects/${projectId}/timesheet.json`);
     return raw.map((r) => this.mapTimesheetEntry(r));
+  }
+
+  async getProjectTimesheetRecordingId(projectId: number): Promise<number> {
+    const entries = await this.getProjectTimesheet(projectId);
+    const recordingId = entries.find((entry) => entry.parentType === 'Timesheet')?.parentId;
+    if (!recordingId) throw new Error('Basecamp has no project-level entry to reveal this timesheet recording ID. Choose a to-do for now.');
+    return recordingId;
   }
 
   // Update an existing Basecamp timesheet entry. Uses the flat route — note
@@ -542,52 +552,6 @@ export class BasecampApi {
       bucket: h.bucket,
       parent: h.parent,
       createdAt: h.created_at,
-    }));
-  }
-
-  // v5.8.0 — Authenticated-user profile. Returns the same person shape as
-  // listProjectMembers; the `admin` field reflects BC account-admin status,
-  // which gates the Team time dashboard tab. Called on dashboard mount + cached.
-  //
-  // v5.8.1 — Logs the raw response so we can verify the admin-field shape
-  // against real BC accounts. BC's docs at github.com/basecamp/bc3-api list
-  // `admin` as a boolean on the Person object; if a deployment ever sees
-  // the field missing/renamed, this trace surfaces it.
-  async getMe(): Promise<BasecampPerson> {
-    const p = await this.requestJson<RawPerson>(`${this.accountBase()}/my/profile.json`);
-    console.log('[bc.getMe] raw response:', JSON.stringify({
-      id: p.id, name: p.name, admin: p.admin, client: p.client,
-      can_access_timesheet: p.can_access_timesheet,
-    }));
-    return {
-      id: p.id,
-      name: p.name,
-      emailAddress: p.email_address,
-      avatarUrl: p.avatar_url,
-      title: p.title,
-      admin: p.admin ?? false,
-      client: p.client ?? false,
-      canAccessTimesheet: p.can_access_timesheet ?? false,
-    };
-  }
-
-  // v5.8.1 — Account-wide people. Used by the Team time tab as the person
-  // picker source so EVERY teammate appears, not just ones who've logged
-  // time on a pinned project. BC3 docs: GET /people.json returns all people
-  // in the account (BC's API doesn't return deactivated users here, so we
-  // don't need a separate "active" filter). Renderer filters out clients
-  // since they don't appear on team timesheets.
-  async listPeople(): Promise<BasecampPerson[]> {
-    const raw = await this.paginate<RawPerson>(`${this.accountBase()}/people.json`);
-    return raw.map((p) => ({
-      id: p.id,
-      name: p.name,
-      emailAddress: p.email_address,
-      avatarUrl: p.avatar_url,
-      title: p.title,
-      admin: p.admin ?? false,
-      client: p.client ?? false,
-      canAccessTimesheet: p.can_access_timesheet ?? false,
     }));
   }
 
@@ -697,6 +661,9 @@ export class BasecampApi {
   }
 
   private mapTimesheetEntry(r: RawTimesheetEntry): BasecampTimesheetEntry {
+    if (!Number.isSafeInteger(r?.id) || r.id <= 0) {
+      throw new Error('Basecamp did not return a valid time entry ID. Check Basecamp before retrying.');
+    }
     return {
       id: r.id,
       date: r.date,

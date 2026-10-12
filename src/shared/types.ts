@@ -89,7 +89,10 @@ export interface DailySession {
   basecamp?: {
     accountId: number;
     projectId: number;
-    todoId: number;
+    projectName?: string;
+    todoId?: number;
+    // Project-level time uses the project's Timesheet recording, not its project id.
+    recordingId?: number;
     todoListId?: number;
     synced?: boolean; // true once pushed to Basecamp's timesheet
     // Persistent Basecamp Timesheet::Entry id, set after a successful create.
@@ -104,6 +107,10 @@ export interface DailyRecord {
   date: string;
   totalFocusTime: number;
   sessions: DailySession[];
+}
+
+export function sessionNeedsBasecampReview(session: DailySession): boolean {
+  return !session.basecamp?.entryId || session.basecamp.synced !== true;
 }
 
 export interface FocusSchedule {
@@ -148,11 +155,6 @@ export interface AppSettings {
   // polling.
   checkInPromptEnabled?: boolean;  // 9am auto-draft for Basecamp check-ins
   notificationsEnabled?: boolean;  // poll /my/readings.json for the Hey panel
-  // v5.8.0 — Pinned teammates for the Team time tab's quick-select row. Each
-  // entry is a BC person id (numeric). Persists across sessions; survives BC
-  // re-auth as long as the person still exists. Empty / missing = no
-  // favorites row shown.
-  teamTimeFavoritePeopleIds?: number[];
   // v5.2 — Last date (YYYY-MM-DD) the user dismissed the check-in prompt for.
   // We use this to avoid re-firing the prompt the same day after the user
   // already answered or explicitly skipped.
@@ -166,6 +168,7 @@ export interface AppSettings {
   // on the dashboard Plan header and popover footer. Default 8 (a normal
   // working day). User can change in Settings → General → Productivity.
   dailyHoursTarget?: number;        // default 8
+  separatePlans?: boolean;          // keep due Tomorrow items for explicit review at rollover
 }
 
 // ── Basecamp Types ─────────────────────────────────────────────
@@ -274,6 +277,11 @@ export interface TodayPlan {
   folderOrder?: string[];
   // Per-folder collapsed state. Persists across rollover. Keyed by folder ID.
   collapsedFolders?: Record<string, boolean>;
+}
+
+export interface PlanReviewItem {
+  item: PinnedTodo;
+  dueDate: string;
 }
 
 // Track recently-used Basecamp todos so the popover can offer one-tap restart
@@ -509,6 +517,9 @@ export const IPC = {
   DELETE_SESSION: 'data:delete-session',
   UPDATE_SESSION: 'data:update-session',
   ADD_SESSION: 'data:add-session',
+  RECONCILE_SESSION: 'data:reconcile-session',
+  RECONCILE_BATCH: 'data:reconcile-batch',
+  RECONCILE_BATCH_PROGRESS: 'data:reconcile-batch-progress',
 
   // Settings & Templates (renderer → main)
   GET_SETTINGS: 'data:get-settings',
@@ -584,10 +595,6 @@ export const IPC = {
   BC_UPDATE_TIME_ENTRY: 'basecamp:update-time-entry',
   BC_DELETE_TIME_ENTRY: 'basecamp:delete-time-entry',
   BC_GET_PROJECT_TIMESHEET: 'basecamp:get-project-timesheet',
-  // v5.8.0 — Authenticated user's BC profile (incl. account-admin flag).
-  // Cached client-side; admin status gates the team-visibility toggle.
-  BC_GET_ME: 'basecamp:get-me',
-  BC_LIST_PEOPLE: 'basecamp:list-people',
   BC_BACKFILL_TIMESHEET: 'basecamp:backfill-timesheet',
   // v5.1.0 — pin UX shortcuts. /my/assignments.json removes the 3-layer drill
   // for the common "pin one of my todos" case; search/due are tab fallbacks.
@@ -642,8 +649,8 @@ export const IPC = {
   TODAY_CHANGED: 'today:changed', // main → renderer
   RECENTS_GET: 'recents:get',
 
-  // Tomorrow plan — same shape as today, separate slot. At midnight rollover,
-  // tomorrow's items merge into today's (along with today's unfinished carry-overs).
+  // Tomorrow plan — due items merge into Today by default or wait for review
+  // when separate plans is enabled.
   TOMORROW_GET: 'tomorrow:get',
   TOMORROW_PIN: 'tomorrow:pin',
   TOMORROW_PIN_MANY: 'tomorrow:pin-many', // v5.1.0 — batch pin
@@ -652,6 +659,8 @@ export const IPC = {
   TOMORROW_SET_ESTIMATE: 'tomorrow:set-estimate',
   TOMORROW_TOGGLE_COMPLETE: 'tomorrow:toggle-complete',
   TOMORROW_CHANGED: 'tomorrow:changed', // main → renderer
+  PLAN_REVIEW_GET: 'plan-review:get',
+  PLAN_REVIEW_MOVE: 'plan-review:move',
 
   // v5.1.0 — alert windows fetch their current payload on mount instead of
   // relying on the one-shot 'alert-data' broadcast (fixes the blank-window

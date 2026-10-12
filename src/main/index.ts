@@ -9,7 +9,7 @@ import { NetworkingService } from './networking/NetworkingService';
 import { PersistenceService } from './services/persistence';
 import { TimeTracker } from './services/timeTracker';
 import { setupUpdater, checkForUpdate, installUpdate } from './updater';
-import { IPC, AvailabilityStatus, User, MessageType, AppSettings, PinnedTodo, MyAssignmentsDueScope } from '../shared/types';
+import { IPC, AvailabilityStatus, User, MessageType, AppSettings, PinnedTodo, MyAssignmentsDueScope, DailySession } from '../shared/types';
 import { LicenseManager } from './services/licenseManager';
 import { BasecampService } from './services/basecamp';
 import { fetchWeeklyAllocations } from './services/weeklyAllocations';
@@ -63,6 +63,7 @@ let isQuitting = false;
 
 const persistence = new PersistenceService();
 const timeTracker = new TimeTracker(persistence);
+const postingSessionIds = new Set<string>();
 const licenseManager = new LicenseManager();
 const basecamp = new BasecampService();
 
@@ -421,6 +422,7 @@ app.on('child-process-gone', (_event, details) => {
 function recordingBlockReason(): string | null {
   if (timerIsRunning || timerIsPaused) return 'Stop your timer and save the session before quitting or restarting ZenState.';
   if (pendingTimesheetEntry !== null) return 'Finish the time confirmation before quitting or restarting ZenState.';
+  if (postingSessionIds.size > 0) return 'Wait for the Basecamp submission to finish before quitting or restarting ZenState.';
   if (basecamp.api.hasPendingWrites) return 'Wait for the Basecamp submission to finish before quitting or restarting ZenState.';
   return null;
 }
@@ -1040,7 +1042,7 @@ function handleIncomingPing(data: { senderId: string; senderName: string; messag
 
 // ── Timer Logic ────────────────────────────────────────────────
 
-function startTimer(taskLabel: string, category?: string, targetDuration?: number, basecampLink?: { accountId: number; projectId: number; todoId: number; todoListId?: number; projectName?: string }) {
+function startTimer(taskLabel: string, category?: string, targetDuration?: number, basecampLink?: { accountId: number; projectId: number; todoId: number; todoListId?: number; projectName?: string }, initialNotes = '') {
   // v5.8.2 — Plan tab and popover called startTimer without stopping first,
   // discarding the running session. Mirror the pill switcher: save outgoing
   // time (local + Basecamp) before starting the new task.
@@ -1094,7 +1096,7 @@ function startTimer(taskLabel: string, category?: string, targetDuration?: numbe
     const pinned = plan.items.find((p) => p.todoId === basecampLink.todoId);
     currentSessionNotes = pinned?.draftNotes ?? '';
   } else {
-    currentSessionNotes = '';
+    currentSessionNotes = initialNotes;
   }
   longRunGuardFired = false;
   meetingModeActive = false; // Meeting mode is per-session; reset for a fresh start
@@ -1200,7 +1202,8 @@ function showLongRunAlert(elapsedSeconds: number) {
   });
 }
 
-function showTimesheetConfirmAlert(taskLabel: string, durationSec: number, notes?: string, projectId?: number) {
+function showTimesheetConfirmAlert(sessionId: string, taskLabel: string, durationSec: number, notes?: string, projectId?: number) {
+  if (timesheetConfirmAlertWin && !timesheetConfirmAlertWin.isDestroyed()) timesheetConfirmAlertWin.destroy();
   const alertWin = createAlertWindow(getRendererURL('alert.html'), {
     width: 400,
     height: 460,
@@ -1224,13 +1227,13 @@ function showTimesheetConfirmAlert(taskLabel: string, durationSec: number, notes
   // the user knows to use Settings → Backfill if they want it on Basecamp.
   alertWin.on('closed', () => {
     if (timesheetConfirmAlertWin === alertWin) timesheetConfirmAlertWin = null;
-    if (pendingTimesheetEntry) {
+    if (pendingTimesheetEntry?.sessionId === sessionId) {
       const dropped = pendingTimesheetEntry;
       pendingTimesheetEntry = null;
       try {
         new Notification({
           title: 'Session saved locally',
-          body: `"${dropped.taskLabel}" wasn't sent to Basecamp. Use Settings → Backfill to sync later.`,
+          body: `"${dropped.taskLabel}" wasn't sent to Basecamp. Review it in Timesheet later.`,
           silent: false,
         }).show();
       } catch (err) {
@@ -1348,7 +1351,7 @@ function stopTimer() {
         taskLabel: capturedTaskLabel,
         durationSec: totalDuration,
       };
-      showTimesheetConfirmAlert(capturedTaskLabel, totalDuration, capturedNotes, link.projectId);
+      showTimesheetConfirmAlert(saved.sessionId, capturedTaskLabel, totalDuration, capturedNotes, link.projectId);
     } else {
       const hours = (totalDuration / 3600).toFixed(2);
       // v5.6.1 — Use the local row's date key (derived from the session's
@@ -1358,6 +1361,7 @@ function stopTimer() {
       // If the user wrote notes mid-session, use them as the timesheet entry
       // description — same convention as the confirm-popup path.
       const description = capturedNotes || capturedTaskLabel;
+      postingSessionIds.add(saved.sessionId);
       basecamp.api.createTimesheetEntry({
         todoId: link.todoId,
         date,
@@ -1383,7 +1387,7 @@ function stopTimer() {
           context: 'auto-post-on-stop',
           message: (err as Error)?.message ?? 'Basecamp post failed',
         });
-      });
+      }).finally(() => postingSessionIds.delete(saved.sessionId));
     }
   }
 
@@ -1481,8 +1485,9 @@ function setupIPC() {
   });
 
   // Timer
-  ipcMain.on(IPC.START_TIMER, (_e, data: { taskLabel: string; category?: string; targetDuration?: number; basecamp?: { accountId: number; projectId: number; todoId: number; todoListId?: number; projectName?: string } }) => {
-    startTimer(data.taskLabel, data.category, data.targetDuration, data.basecamp);
+  ipcMain.on(IPC.START_TIMER, (_e, data: { taskLabel: string; category?: string; targetDuration?: number; basecamp?: { accountId: number; projectId: number; todoId: number; todoListId?: number; projectName?: string }; notes?: string }) => {
+    if (!data.taskLabel?.trim()) return;
+    startTimer(data.taskLabel.trim(), data.category, data.targetDuration, data.basecamp, data.notes?.trim() ?? '');
   });
   ipcMain.on(IPC.STOP_TIMER, () => stopTimer());
   ipcMain.on(IPC.PAUSE_TIMER, () => pauseTimer());
@@ -1538,6 +1543,7 @@ function setupIPC() {
       && editedDurationSec > 0
       && Math.abs(editedDurationSec - pending.durationSec) >= 1;
 
+    postingSessionIds.add(pending.sessionId);
     try {
       const entry = await basecamp.api.createTimesheetEntry({
         todoId: link.todoId,
@@ -1613,6 +1619,8 @@ function setupIPC() {
         sessionId: pending.sessionId,
         message: (err as Error)?.message ?? 'Basecamp post failed',
       });
+    } finally {
+      postingSessionIds.delete(pending.sessionId);
     }
   });
 
@@ -1712,9 +1720,12 @@ function setupIPC() {
   ipcMain.handle(IPC.DELETE_SESSION, async (_e, data: { sessionId: string; date: string }) => {
     const session = timeTracker.findSession(data.sessionId, data.date);
     if (!session) return { ok: false, error: 'Session not found', basecampDeleted: false };
+    if (postingSessionIds.has(data.sessionId) || pendingTimesheetEntry?.sessionId === data.sessionId) {
+      return { ok: false, error: 'Wait for the Basecamp post or review to finish before deleting this session', basecampDeleted: false };
+    }
 
     const entryId = session.basecamp?.entryId;
-    const hadBasecampLink = !!session.basecamp?.todoId;
+    const hadBasecampLink = !!session.basecamp;
     const projectId = session.basecamp?.projectId;
     const todoId = session.basecamp?.todoId;
 
@@ -1752,13 +1763,30 @@ function setupIPC() {
   ipcMain.handle(IPC.UPDATE_SESSION, async (_e, data: { sessionId: string; date: string; updates: Parameters<typeof timeTracker.updateSession>[2] }) => {
     const before = timeTracker.findSession(data.sessionId, data.date);
     if (!before) return { ok: false, error: 'Session not found' };
+    if (postingSessionIds.has(data.sessionId) || pendingTimesheetEntry?.sessionId === data.sessionId) {
+      return { ok: false, error: 'Wait for the Basecamp post or review to finish before editing this session' };
+    }
 
-    timeTracker.updateSession(data.sessionId, data.date, data.updates);
+    if (data.updates.startTime !== undefined) {
+      const start = new Date(data.updates.startTime);
+      if (!Number.isFinite(start.getTime()) || isoDateLocal(start) !== data.date.split('T')[0]) {
+        return { ok: false, error: 'Start time must be valid and on this session’s date' };
+      }
+    }
+
+    const oldRecording = before.basecamp?.recordingId ?? before.basecamp?.todoId;
+    const requestedLink = data.updates.basecamp;
+    const newRecording = requestedLink?.recordingId ?? requestedLink?.todoId;
+    const movingEntry = !!before.basecamp?.entryId && !!requestedLink && newRecording !== oldRecording;
+    const removingEntry = !!before.basecamp?.entryId && requestedLink === null;
+    timeTracker.updateSession(data.sessionId, data.date, movingEntry || removingEntry
+      ? { ...data.updates, basecamp: { ...before.basecamp!, synced: false } }
+      : data.updates);
     const after = timeTracker.findSession(data.sessionId, data.date);
     if (!after) return { ok: false, error: 'Session vanished after update' };
 
     const bcBefore = before.basecamp;
-    const bcAfter = after.basecamp;
+    const bcAfter = movingEntry || removingEntry ? requestedLink : after.basecamp;
     const bcConnected = basecamp.oauth.isConnected();
     const hadEntry = !!bcBefore?.entryId;
 
@@ -1769,11 +1797,11 @@ function setupIPC() {
 
     const date = data.date.split('T')[0];
     const description = (after.notes && after.notes.trim()) || after.taskLabel;
-    const hours = (after.duration / 3600).toFixed(2);
+    const hours = (after.duration / 3600).toFixed(5);
 
     try {
       // Case A — same link: update in place
-      if (hadEntry && bcAfter?.todoId && bcAfter.todoId === bcBefore!.todoId) {
+      if (hadEntry && bcAfter && (bcAfter.recordingId ?? bcAfter.todoId) === (bcBefore!.recordingId ?? bcBefore!.todoId)) {
         if (!bcConnected) throw new Error('Basecamp is not connected');
         const updated = await basecamp.api.updateTimesheetEntry(bcBefore!.entryId!, { date, hours, description });
         timeTracker.updateSession(data.sessionId, data.date, {
@@ -1782,16 +1810,12 @@ function setupIPC() {
         basecampSynced = true;
       }
       // Case B — re-link to a different todo: delete old, create new
-      else if (hadEntry && bcAfter?.todoId && bcAfter.todoId !== bcBefore!.todoId) {
+      else if (hadEntry && bcAfter && (bcAfter.recordingId ?? bcAfter.todoId) !== (bcBefore!.recordingId ?? bcBefore!.todoId)) {
         if (!bcConnected) throw new Error('Basecamp is not connected');
-        try {
-          await basecamp.api.deleteTimesheetEntry(bcBefore!.entryId!);
-        } catch (delErr) {
-          // Old entry orphaned — log but don't block. User can fix manually.
-          console.warn('Re-link: failed to delete old Basecamp entry; continuing with create:', delErr);
-        }
+        await basecamp.api.deleteTimesheetEntry(bcBefore!.entryId!);
+        timeTracker.updateSession(data.sessionId, data.date, { basecamp: { ...bcAfter, synced: false, entryId: undefined } });
         const created = await basecamp.api.createTimesheetEntry({
-          todoId: bcAfter.todoId,
+          recordingId: bcAfter.recordingId ?? bcAfter.todoId,
           date,
           hours,
           description,
@@ -1805,12 +1829,13 @@ function setupIPC() {
       else if (hadEntry && !bcAfter) {
         if (!bcConnected) throw new Error('Basecamp is not connected');
         await basecamp.api.deleteTimesheetEntry(bcBefore!.entryId!);
+        timeTracker.updateSession(data.sessionId, data.date, { basecamp: null });
       }
       // Case D — newly linked: create a fresh entry
-      else if (!bcBefore && bcAfter?.todoId) {
+      else if (!hadEntry && bcAfter && !bcAfter.synced) {
         if (!bcConnected) throw new Error('Basecamp is not connected');
         const created = await basecamp.api.createTimesheetEntry({
-          todoId: bcAfter.todoId,
+          recordingId: bcAfter.recordingId ?? bcAfter.todoId,
           date,
           hours,
           description,
@@ -1823,7 +1848,7 @@ function setupIPC() {
       // Pre-v5.1.0 session: synced locally but no entryId on file. Can't push
       // to Basecamp without knowing which entry to update. Flag so the UI can
       // tell the user to also fix in Basecamp manually.
-      else if (bcAfter?.todoId && bcAfter.synced && !hadEntry) {
+      else if (bcAfter?.synced && !hadEntry) {
         needsManualFix = true;
       }
 
@@ -1857,7 +1882,7 @@ function setupIPC() {
   // from `stopTimer`'s implicit add in that the user explicitly typed the
   // duration, so we skip the confirm popup and post to Basecamp directly
   // (if the entry has a Basecamp link + meets the sub-minute floor).
-  ipcMain.handle(IPC.ADD_SESSION, async (_e, data: { taskLabel: string; duration: number; startTime: string; notes?: string; basecamp?: { accountId: number; projectId: number; todoId: number; todoListId?: number } | null }) => {
+  ipcMain.handle(IPC.ADD_SESSION, async (_e, data: { taskLabel: string; duration: number; startTime: string; notes?: string; basecamp?: DailySession['basecamp'] | null }) => {
     try {
       if (!data.taskLabel?.trim()) return { ok: false, error: 'Task label required' };
       if (!Number.isFinite(data.duration) || data.duration <= 0) return { ok: false, error: 'Duration must be greater than zero' };
@@ -1897,8 +1922,9 @@ function setupIPC() {
         const hours = (data.duration / 3600).toFixed(2);
         const date = isoDateLocal(start);
         const description = trimmedNotes || data.taskLabel.trim();
+        postingSessionIds.add(saved.sessionId);
         basecamp.api.createTimesheetEntry({
-          todoId: link.todoId,
+          ...(link.recordingId ? { recordingId: link.recordingId } : { todoId: link.todoId }),
           date,
           hours,
           description,
@@ -1922,12 +1948,131 @@ function setupIPC() {
             sessionId: saved.sessionId,
             message: (err as Error)?.message ?? 'Basecamp post failed',
           });
-        });
+        }).finally(() => postingSessionIds.delete(saved.sessionId));
       }
 
       return { ok: true, sessionId: saved.sessionId, dateStr: saved.dateStr };
     } catch (err) {
       return { ok: false, error: (err as Error).message };
+    }
+  });
+
+  // Review one locally saved session and post it to a selected recording.
+  // Each session gets its own Basecamp entry id, so later edits/deletes stay independent.
+  const reconcileOne = async (data: {
+    sessionId: string; date: string; projectId: number; todoId?: number;
+    notes: string; duration: number; allowPossibleDuplicate?: boolean;
+  }, reserved = false, verifiedProject?: { id: number; name: string; timesheetEnabled?: boolean }) => {
+    if (!data || typeof data.sessionId !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(data.date) || typeof data.notes !== 'string') {
+      return { ok: false, error: 'Invalid session review data' };
+    }
+    const session = timeTracker.findSession(data.sessionId, data.date);
+    if (!session) return { ok: false, error: 'Session not found' };
+    if (session.basecamp?.synced && !session.basecamp.entryId && !data.allowPossibleDuplicate) {
+      return { ok: false, error: 'This session was previously marked synced. Check Basecamp first, then confirm the manual retry.' };
+    }
+    if (!Number.isFinite(data.duration) || data.duration <= 0) return { ok: false, error: 'Duration must be greater than zero' };
+    if (!Number.isSafeInteger(data.projectId) || data.projectId <= 0 || (data.todoId !== undefined && (!Number.isSafeInteger(data.todoId) || data.todoId <= 0))) {
+      return { ok: false, error: 'Choose a valid Basecamp project or to-do' };
+    }
+    if ((!reserved && postingSessionIds.has(data.sessionId)) || pendingTimesheetEntry?.sessionId === data.sessionId) {
+      return { ok: false, error: 'This session is already being posted or reviewed. Wait for it to finish.' };
+    }
+    if (!reserved) postingSessionIds.add(data.sessionId);
+    try {
+      if (!basecamp.oauth.isConnected()) throw new Error('Basecamp is not connected. Reconnect in Settings and retry.');
+      const project = verifiedProject ?? (await basecamp.api.listProjects()).find((p) => p.id === data.projectId);
+      if (!project?.timesheetEnabled) throw new Error('This project does not have an enabled timesheet');
+      const recordingId = data.todoId ?? await basecamp.api.getProjectTimesheetRecordingId(data.projectId);
+      const accountId = basecamp.oauth.getAccountId();
+      const old = session.basecamp;
+      const sameRecording = old?.projectId === data.projectId && (old.recordingId ?? old.todoId) === recordingId;
+      const link: NonNullable<DailySession['basecamp']> = {
+        accountId, projectId: data.projectId, projectName: project.name,
+        ...(data.todoId ? { todoId: data.todoId } : { recordingId }),
+        synced: false,
+        ...(sameRecording && old?.entryId ? { entryId: old.entryId } : {}),
+      };
+      // Keep the old entry ID until Basecamp confirms its deletion. A failed
+      // delete must remain retryable without creating a second entry.
+      timeTracker.updateSession(data.sessionId, data.date, {
+        notes: data.notes.trim(), duration: data.duration,
+        basecamp: old?.entryId && !sameRecording ? { ...old, synced: false } : link,
+      });
+      broadcastToWindows('basecamp:timesheet-updated', { projectId: data.projectId, todoId: data.todoId });
+      const fields = {
+        date: data.date.split('T')[0],
+        hours: (data.duration / 3600).toFixed(5),
+        description: data.notes.trim() || session.taskLabel,
+      };
+      if (old?.entryId && !sameRecording) {
+        await basecamp.api.deleteTimesheetEntry(old.entryId);
+        timeTracker.updateSession(data.sessionId, data.date, { basecamp: link });
+      }
+      const entry = sameRecording && old?.entryId
+        ? await basecamp.api.updateTimesheetEntry(old.entryId, fields)
+        : await basecamp.api.createTimesheetEntry({ recordingId, ...fields });
+      timeTracker.updateSession(data.sessionId, data.date, { basecamp: { ...link, synced: true, entryId: entry.id } });
+      broadcastToWindows('basecamp:timesheet-updated', { projectId: data.projectId, todoId: data.todoId });
+      return { ok: true, entryId: entry.id };
+    } catch (err) {
+      const message = (err as Error)?.message ?? 'Basecamp post failed';
+      broadcastToWindows('basecamp:timesheet-error', { context: 'reconcile', sessionId: data.sessionId, message });
+      return { ok: false, error: message };
+    } finally {
+      if (!reserved) postingSessionIds.delete(data.sessionId);
+    }
+  };
+  ipcMain.handle(IPC.RECONCILE_SESSION, async (_e, data: Parameters<typeof reconcileOne>[0]) => reconcileOne(data));
+
+  // One destination, separate Basecamp entries. Save each confirmed id before moving on.
+  ipcMain.handle(IPC.RECONCILE_BATCH, async (event, data: {
+    sessions: { sessionId: string; date: string }[]; projectId: number; todoId: number;
+  }) => {
+    if (!data || !Array.isArray(data.sessions) || data.sessions.length < 1 || data.sessions.length > 100
+      || !Number.isSafeInteger(data.projectId) || data.projectId <= 0
+      || !Number.isSafeInteger(data.todoId) || data.todoId <= 0) {
+      return { ok: false, error: 'Choose 1–100 sessions and a valid Basecamp to-do.' };
+    }
+    const ids = new Set<string>();
+    for (const item of data.sessions) {
+      if (!item || typeof item.sessionId !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(item.date)
+        || ids.has(item.sessionId)) return { ok: false, error: 'Invalid or repeated session selection.' };
+      ids.add(item.sessionId);
+      const session = timeTracker.findSession(item.sessionId, item.date);
+      if (!session) return { ok: false, error: 'A selected session was not found. Refresh and try again.' };
+      if (session.basecamp?.entryId) return { ok: false, error: 'A selected session already has a Basecamp entry. Review it separately.' };
+      if (session.basecamp?.synced) return { ok: false, error: 'A selected session was previously marked synced. Review it separately to avoid a duplicate.' };
+      if (postingSessionIds.has(item.sessionId) || pendingTimesheetEntry?.sessionId === item.sessionId) {
+        return { ok: false, error: 'A selected session is already being posted. Wait for it to finish.' };
+      }
+      if (!Number.isFinite(session.duration) || session.duration <= 0) return { ok: false, error: 'A selected session has no recorded duration.' };
+    }
+    for (const id of ids) postingSessionIds.add(id);
+    try {
+      if (!basecamp.oauth.isConnected()) return { ok: false, error: 'Basecamp is not connected. Reconnect in Settings and retry.' };
+      let project: { id: number; name: string; timesheetEnabled?: boolean } | undefined;
+      try {
+        project = (await basecamp.api.listProjects()).find((p) => p.id === data.projectId);
+        if (!project?.timesheetEnabled) return { ok: false, error: 'This project does not have an enabled timesheet.' };
+      } catch (err) { return { ok: false, error: (err as Error).message }; }
+      const results: { sessionId: string; date: string; ok: boolean; entryId?: number; error?: string }[] = [];
+      for (const item of data.sessions) {
+        // Read the latest local values so edits made before this batch are retained.
+        const session = timeTracker.findSession(item.sessionId, item.date);
+        const result = session
+          ? await reconcileOne({ ...item, projectId: data.projectId, todoId: data.todoId,
+            notes: session.notes ?? '', duration: session.duration }, true, project)
+          : { ok: false, error: 'Session no longer exists.' };
+        const completed = { ...item, ...result };
+        results.push(completed);
+        if (!event.sender.isDestroyed()) event.sender.send(IPC.RECONCILE_BATCH_PROGRESS, {
+          completed: results.length, total: data.sessions.length, ...completed,
+        });
+      }
+      return { ok: true, results };
+    } finally {
+      for (const id of ids) postingSessionIds.delete(id);
     }
   });
 
@@ -2458,25 +2603,6 @@ function setupIPC() {
       return { ok: false, error: describeError(err, 'getProjectTimesheet') };
     }
   });
-  // v5.8.0 — Authenticated user's BC profile. Returns the account-admin flag
-  // that gates the team-visibility settings toggle. Sub-1KB response; called
-  // once on dashboard mount and cached in the renderer.
-  ipcMain.handle(IPC.BC_GET_ME, async () => {
-    try {
-      return { ok: true, data: await basecamp.api.getMe() };
-    } catch (err) {
-      return { ok: false, error: describeError(err, 'getMe') };
-    }
-  });
-  // v5.8.1 — Account-wide active people, for the Team time person picker.
-  ipcMain.handle(IPC.BC_LIST_PEOPLE, async () => {
-    try {
-      return { ok: true, data: await basecamp.api.listPeople() };
-    } catch (err) {
-      return { ok: false, error: describeError(err, 'listPeople') };
-    }
-  });
-
   // v5.1.0 — Direct Basecamp time-entry update/delete. Most callers should go
   // through UPDATE_SESSION/DELETE_SESSION which orchestrate local + remote;
   // these are exposed for special cases (e.g. a future reconcile tool).
@@ -2610,82 +2736,38 @@ function setupIPC() {
     return alertPayloads.get(e.sender.id) ?? null;
   });
 
-  // One-shot backfill: scan local sessions tagged with a Basecamp todo that
-  // haven't been pushed yet, group by (todoId, date), post each as a timesheet
-  // entry, and mark them synced. Returns counts so the UI can report progress.
+  // Retry linked sessions independently. Sharing an entry ID between grouped
+  // sessions makes a later edit/delete change another session's Basecamp time.
   ipcMain.handle(IPC.BC_BACKFILL_TIMESHEET, async () => {
     if (!basecamp.oauth.isConnected()) {
       return { ok: false, error: 'Basecamp is not connected' };
     }
-
-    type Group = {
-      todoId: number;
-      projectId: number;
-      dateStr: string; // YYYY-MM-DD
-      sessions: { sessionId: string; dateStr: string; duration: number; taskLabel: string }[];
-    };
-
-    const records = persistence.getRecords();
-    const groups = new Map<string, Group>();
-    let totalUnsynced = 0;
-
-    for (const rec of records) {
-      const dateStr = rec.date.split('T')[0];
-      for (const s of rec.sessions) {
-        if (!s.basecamp || !s.basecamp.todoId) continue;
-        if (s.basecamp.synced) continue;
-        if (s.duration < 60) continue; // skip sub-minute sessions
-        totalUnsynced++;
-        const key = `${s.basecamp.todoId}|${dateStr}`;
-        const g = groups.get(key) ?? {
-          todoId: s.basecamp.todoId,
-          projectId: s.basecamp.projectId,
-          dateStr,
-          sessions: [],
-        };
-        g.sessions.push({ sessionId: s.id, dateStr, duration: s.duration, taskLabel: s.taskLabel });
-        groups.set(key, g);
-      }
-    }
-
-    if (groups.size === 0) {
-      return { ok: true, data: { migrated: 0, failed: 0, totalUnsynced: 0, groups: 0 } };
-    }
-
+    const pending = persistence.getRecords().flatMap((rec) => rec.sessions
+      .filter((session) => session.basecamp && !session.basecamp.synced)
+      .map((session) => ({ session, dateStr: rec.date.split('T')[0] })));
     let migrated = 0;
     let failed = 0;
     const projectsTouched = new Set<number>();
     const failures: string[] = [];
-
-    for (const g of groups.values()) {
-      const totalSec = g.sessions.reduce((a, b) => a + b.duration, 0);
-      const hours = (totalSec / 3600).toFixed(2);
-      const description = g.sessions[0].taskLabel;
+    for (const { session, dateStr } of pending) {
+      const link = session.basecamp!;
+      if (postingSessionIds.has(session.id) || pendingTimesheetEntry?.sessionId === session.id) continue;
+      postingSessionIds.add(session.id);
       try {
-        const entry = await basecamp.api.createTimesheetEntry({
-          todoId: g.todoId,
-          date: g.dateStr,
-          hours,
-          description,
-        });
-        // Stamp the shared entryId on every session in the group so future
-        // edits/deletes of any of them propagate to the single Basecamp entry
-        // they were merged into.
-        for (const s of g.sessions) {
-          const existing = timeTracker.findSession(s.sessionId, s.dateStr);
-          if (existing?.basecamp) {
-            timeTracker.updateSession(s.sessionId, s.dateStr, {
-              basecamp: { ...existing.basecamp, synced: true, entryId: entry.id },
-            });
-          } else {
-            timeTracker.markSessionSynced(s.sessionId, s.dateStr);
-          }
-          migrated++;
-        }
-        projectsTouched.add(g.projectId);
+        const recordingId = link.recordingId ?? link.todoId;
+        if (!recordingId) throw new Error('No Basecamp recording selected');
+        const fields = { date: dateStr, hours: (session.duration / 3600).toFixed(5), description: session.notes?.trim() || session.taskLabel };
+        const entry = link.entryId
+          ? await basecamp.api.updateTimesheetEntry(link.entryId, fields)
+          : await basecamp.api.createTimesheetEntry({ recordingId, ...fields });
+        timeTracker.updateSession(session.id, dateStr, { basecamp: { ...link, synced: true, entryId: entry.id } });
+        projectsTouched.add(link.projectId);
+        migrated++;
       } catch (err) {
-        failed += g.sessions.length;
-        failures.push(`${g.dateStr} todo ${g.todoId}: ${(err as Error).message}`);
+        failed++;
+        failures.push(`${dateStr} session ${session.id}: ${(err as Error).message}`);
+      } finally {
+        postingSessionIds.delete(session.id);
       }
     }
 
@@ -2695,7 +2777,7 @@ function setupIPC() {
 
     return {
       ok: true,
-      data: { migrated, failed, totalUnsynced, groups: groups.size, failures: failures.slice(0, 5) },
+      data: { migrated, failed, totalUnsynced: pending.length, groups: pending.length, failures: failures.slice(0, 5) },
     };
   });
 
@@ -2927,6 +3009,17 @@ function setupIPC() {
   // Items are queued here during the day and promoted to today at midnight.
 
   ipcMain.handle(IPC.TOMORROW_GET, () => persistence.getTomorrowPlan());
+  ipcMain.handle(IPC.PLAN_REVIEW_GET, () => {
+    persistence.getTodayPlan();
+    return persistence.getPlanReview();
+  });
+  ipcMain.handle(IPC.PLAN_REVIEW_MOVE, (_e, data: { todoId: number; dueDate: string; target: 'today' | 'tomorrow' }) => {
+    if (data.target !== 'today' && data.target !== 'tomorrow') throw new Error('Invalid plan target');
+    const result = persistence.movePlanReview(data.todoId, data.dueDate, data.target);
+    broadcastToWindows(data.target === 'today' ? IPC.TODAY_CHANGED : IPC.TOMORROW_CHANGED, result.plan);
+    broadcastToWindows(IPC.TOMORROW_CHANGED, persistence.getTomorrowPlan());
+    return result.review;
+  });
 
   ipcMain.handle(IPC.TOMORROW_PIN, (_e, item: PinnedTodo) => {
     const plan = persistence.getTomorrowPlan();

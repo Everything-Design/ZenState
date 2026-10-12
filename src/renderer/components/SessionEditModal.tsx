@@ -1,13 +1,15 @@
 import React, { useState, useEffect } from 'react';
 import { DailySession, PinnedTodo, BasecampAuthState, RecentTodo } from '../../shared/types';
 import { PinPicker } from '../views/dashboard/TodayTab';
+import { sessionStartTime } from '../utils/format';
+import { SessionTimeField } from './SessionDateTimeFields';
 
 type BasecampLink = NonNullable<DailySession['basecamp']>;
 
 interface Props {
   session: DailySession;
   date: string;
-  onSave: (sessionId: string, date: string, updates: { taskLabel: string; duration: number; notes: string; basecamp?: BasecampLink | null }) => void;
+  onSave: (sessionId: string, date: string, updates: { taskLabel: string; duration: number; notes: string; startTime?: string; basecamp?: BasecampLink | null }) => void;
   onClose: () => void;
 }
 
@@ -16,6 +18,15 @@ export default function SessionEditModal({ session, date, onSave, onClose }: Pro
   const [notes, setNotes] = useState(session.notes || '');
   const [hours, setHours] = useState(Math.floor(session.duration / 3600));
   const [minutes, setMinutes] = useState(Math.floor((session.duration % 3600) / 60));
+  const [durationEdited, setDurationEdited] = useState(false);
+  const [startTime, setStartTime] = useState(() => {
+    const started = new Date(session.startTime);
+    return Number.isFinite(started.getTime())
+      ? `${String(started.getHours()).padStart(2, '0')}:${String(started.getMinutes()).padStart(2, '0')}`
+      : '';
+  });
+  const [startTimeEdited, setStartTimeEdited] = useState(false);
+  const [error, setError] = useState('');
 
   // Basecamp linking state. We model it as either:
   //  - the original link from the saved session (read-only display until user edits)
@@ -24,7 +35,7 @@ export default function SessionEditModal({ session, date, onSave, onClose }: Pro
   const [linkState, setLinkState] = useState<BasecampLink | null | undefined>(session.basecamp);
   // Human-readable summary for the current link (project / todo title).
   const [linkDisplayName, setLinkDisplayName] = useState<string | null>(
-    session.basecamp ? `Linked Basecamp to-do (#${session.basecamp.todoId})` : null
+    session.basecamp ? (session.basecamp.todoId ? `Linked Basecamp to-do (#${session.basecamp.todoId})` : 'Linked Basecamp project') : null
   );
   const [showPicker, setShowPicker] = useState(false);
   const [authState, setAuthState] = useState<BasecampAuthState | null>(null);
@@ -37,6 +48,7 @@ export default function SessionEditModal({ session, date, onSave, onClose }: Pro
     setLinkState({
       accountId: item.accountId,
       projectId: item.projectId,
+      projectName: item.projectName,
       todoId: item.todoId,
       todoListId: item.todoListId,
       synced: false,
@@ -47,7 +59,9 @@ export default function SessionEditModal({ session, date, onSave, onClose }: Pro
 
   function handleSave() {
     if (!taskLabel.trim()) return;
-    const duration = hours * 3600 + minutes * 60;
+    const duration = durationEdited ? hours * 3600 + minutes * 60 : session.duration;
+    const changedStart = startTimeEdited ? sessionStartTime(date.split('T')[0], startTime) : undefined;
+    if (startTimeEdited && !changedStart) { setError('Enter a valid start time.'); return; }
     // Pass `basecamp` only if the user changed it — null on explicit unlink, the
     // new object on link, undefined to leave alone.
     const basecampChanged = linkState !== session.basecamp;
@@ -55,6 +69,7 @@ export default function SessionEditModal({ session, date, onSave, onClose }: Pro
       taskLabel: taskLabel.trim(),
       duration,
       notes: notes.trim(),
+      ...(changedStart ? { startTime: changedStart } : {}),
       ...(basecampChanged ? { basecamp: linkState ?? null } : {}),
     });
   }
@@ -90,7 +105,7 @@ export default function SessionEditModal({ session, date, onSave, onClose }: Pro
           ) : linkState ? (
             <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 8px', background: 'var(--zen-tertiary-bg)', borderRadius: 6 }}>
               <span style={{ fontSize: 12, flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', color: 'var(--zen-text)' }}>
-                {linkDisplayName ?? `Linked Basecamp to-do (#${linkState.todoId})`}
+                {linkDisplayName ?? (linkState.todoId ? `Linked Basecamp to-do (#${linkState.todoId})` : 'Linked Basecamp project')}
               </span>
               <button
                 className="footer-btn"
@@ -131,7 +146,7 @@ export default function SessionEditModal({ session, date, onSave, onClose }: Pro
                 min="0"
                 max="16"
                 value={hours}
-                onChange={(e) => setHours(parseInt(e.target.value, 10) || 0)}
+                onChange={(e) => { setHours(parseInt(e.target.value, 10) || 0); setDurationEdited(true); }}
                 onBlur={(e) => setHours(Math.min(16, Math.max(0, parseInt(e.target.value, 10) || 0)))}
                 className="text-input"
                 style={{ width: 60, padding: '6px 8px', fontSize: 14, fontFamily: 'var(--font-mono)', textAlign: 'center' }}
@@ -144,7 +159,7 @@ export default function SessionEditModal({ session, date, onSave, onClose }: Pro
                 min="0"
                 max="59"
                 value={minutes}
-                onChange={(e) => setMinutes(parseInt(e.target.value, 10) || 0)}
+                onChange={(e) => { setMinutes(parseInt(e.target.value, 10) || 0); setDurationEdited(true); }}
                 onBlur={(e) => setMinutes(Math.min(59, Math.max(0, parseInt(e.target.value, 10) || 0)))}
                 className="text-input"
                 style={{ width: 60, padding: '6px 8px', fontSize: 14, fontFamily: 'var(--font-mono)', textAlign: 'center' }}
@@ -169,12 +184,13 @@ export default function SessionEditModal({ session, date, onSave, onClose }: Pro
           />
         </div>
 
-        {/* Started at (display only) */}
-        {session.startTime && (
-          <div style={{ fontSize: 11, color: 'var(--zen-tertiary-text)', marginBottom: 16 }}>
-            Started: {new Date(session.startTime).toLocaleString()}
-          </div>
-        )}
+        <div style={{ maxWidth: 210, marginBottom: 12 }}>
+          <SessionTimeField time={startTime} onTimeChange={(value) => { setStartTime(value); setStartTimeEdited(true); }} />
+        </div>
+        <div id="session-start-time-help" style={{ fontSize: 11, color: 'var(--zen-tertiary-text)', marginBottom: 12 }}>
+          When you started working, in your local time. Start time is saved only in ZenState.
+        </div>
+        {error && <div role="alert" style={{ fontSize: 11, color: 'var(--status-focused)', marginBottom: 12 }}>{error}</div>}
 
         {/* Actions */}
         <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>

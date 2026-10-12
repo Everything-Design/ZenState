@@ -112,7 +112,7 @@ export class TimeTracker {
     this.persistence.saveRecords(records);
   }
 
-  updateSession(sessionId: string, dateStr: string, updates: Partial<{ taskLabel: string; category: string; duration: number; notes: string; basecamp: DailySession['basecamp'] | null }>) {
+  updateSession(sessionId: string, dateStr: string, updates: Partial<{ taskLabel: string; category: string; duration: number; notes: string; startTime: string; basecamp: DailySession['basecamp'] | null }>) {
     const records = this.persistence.getRecords();
     const record = records.find((r) => r.date.startsWith(dateStr.split('T')[0]));
     if (!record) return;
@@ -123,11 +123,12 @@ export class TimeTracker {
     if (updates.taskLabel !== undefined) session.taskLabel = updates.taskLabel;
     if (updates.category !== undefined) session.category = updates.category;
     if (updates.notes !== undefined) session.notes = updates.notes;
+    if (updates.startTime !== undefined) session.startTime = updates.startTime;
     if (updates.duration !== undefined) {
       session.duration = updates.duration;
-      // Recalculate end time based on new duration
-      const startMs = new Date(session.startTime).getTime();
-      session.endTime = new Date(startMs + updates.duration * 1000).toISOString();
+    }
+    if (updates.startTime !== undefined || updates.duration !== undefined) {
+      session.endTime = new Date(new Date(session.startTime).getTime() + session.duration * 1000).toISOString();
     }
     // `null` = explicit unlink; `undefined` = no change; an object replaces the link.
     if (updates.basecamp === null) {

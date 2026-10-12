@@ -592,6 +592,17 @@ export default function SettingsTab({ currentUser, peers, isPro, licenseState, o
 
           <div className="divider" />
 
+          <label style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 8, fontSize: 13 }}>
+            <input type="checkbox" checked={!!appSettings.separatePlans}
+              onChange={(e) => updateAppSettings({ separatePlans: e.target.checked })} />
+            Keep Today and Tomorrow separate
+          </label>
+          <div style={{ fontSize: 10, color: 'var(--zen-tertiary-text)', marginBottom: 12 }}>
+            When on, unfinished Today work carries forward at midnight. Tomorrow items wait for your review before moving into Today.
+          </div>
+
+          <div className="divider" />
+
           {/* Productivity (Pro features) */}
           <div style={{ fontSize: 12, fontWeight: 600, marginBottom: 8, marginTop: 8 }}>
             Productivity {!isPro && <ProBadge />}

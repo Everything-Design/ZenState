@@ -65,10 +65,7 @@ export default function SessionDateTimeFields({ date, time, onDateChange, onTime
           <CalendarDays size={15} aria-hidden="true" />
         </button>
       </div>
-      <div onFocusCapture={() => setOpen(false)}>
-        <label id="session-time-label" htmlFor="session-hour">Start time</label>
-        <TimeEntry time={time} onChange={onTimeChange} />
-      </div>
+      <SessionTimeField time={time} onTimeChange={onTimeChange} onFocusCapture={() => setOpen(false)} />
 
       {open && (
         <div id="session-date-panel" className="session-picker-panel" ref={panel} style={{ transform: `translateY(${offset}px)` }} role="dialog" aria-label="Choose session date">
@@ -101,6 +98,17 @@ export default function SessionDateTimeFields({ date, time, onDateChange, onTime
 
     </div>
   );
+}
+
+export function SessionTimeField({ time, onTimeChange, onFocusCapture }: {
+  time: string;
+  onTimeChange: (time: string) => void;
+  onFocusCapture?: () => void;
+}) {
+  return <div className="session-time-field" onFocusCapture={onFocusCapture}>
+    <label id="session-time-label" htmlFor="session-hour">Start time</label>
+    <TimeEntry time={time} onChange={onTimeChange} />
+  </div>;
 }
 
 function TimeEntry({ time, onChange }: { time: string; onChange: (time: string) => void }) {

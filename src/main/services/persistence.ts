@@ -2,7 +2,7 @@ import fs from 'fs';
 import path from 'path';
 import { app } from 'electron';
 import Store from 'electron-store';
-import { User, DailyRecord, FocusSchedule, AppSettings, TodayPlan, RecentTodo, PinnedTodo, PeerGroup } from '../../shared/types';
+import { User, DailyRecord, FocusSchedule, AppSettings, TodayPlan, RecentTodo, PinnedTodo, PeerGroup, PlanReviewItem, sessionNeedsBasecampReview } from '../../shared/types';
 
 // v5.1.4 — One-shot corrupt-file recovery. `new Store({ name })` can throw at
 // module load time on Windows when zenstate-data.json is corrupt (prior crash
@@ -42,6 +42,7 @@ const DEFAULT_APP_SETTINGS: AppSettings = {
   requireTimesheetConfirmation: true, // safer default — user reviews before anything hits Basecamp
   miniTimerEnabled: true, // visible by default — solves the "can't see timer in full-screen" problem
   miniTimerAutoDim: false, // off by default — opt-in for users who find the pill too prominent
+  separatePlans: false,
 };
 
 const store = createStoreWithRecovery({
@@ -56,6 +57,7 @@ const store = createStoreWithRecovery({
     appSettings: DEFAULT_APP_SETTINGS,
     todayPlan: null as TodayPlan | null,
     tomorrowPlan: null as TodayPlan | null,
+    planReview: [] as PlanReviewItem[],
     recentTodos: [] as RecentTodo[],
     peerGroups: [] as PeerGroup[],
   },
@@ -96,7 +98,7 @@ export class PersistenceService {
     const RETENTION_DAYS = 90;
     const cutoffMs = Date.now() - RETENTION_DAYS * 24 * 60 * 60 * 1000;
     const fresh = records.filter((r) => {
-      if (r.sessions.some(session => !session.basecamp?.synced)) return true;
+      if (r.sessions.some(sessionNeedsBasecampReview)) return true;
       const d = new Date(r.date.split('T')[0]).getTime();
       return Number.isFinite(d) && d >= cutoffMs;
     });
@@ -141,9 +143,8 @@ export class PersistenceService {
 
   // ── Today + Tomorrow plans ─────────────────────────────────
   // Two slots, one for active work today and one for queued work tomorrow.
-  // At midnight rollover the tomorrow plan merges into today's, plus any
-  // unfinished items from yesterday's today carry forward. Completed items
-  // are dropped (the daily session record already shows what got done).
+  // At midnight unfinished Today items carry forward. Due Tomorrow items
+  // either merge (default) or wait in review when separate plans is enabled.
 
   getTodayPlan(): TodayPlan {
     const today = todayDateStr();
@@ -151,19 +152,38 @@ export class PersistenceService {
     const tomorrow = store.get('tomorrowPlan') as TodayPlan | null;
 
     if (stored && stored.date === today) {
+      if (tomorrow && tomorrow.date <= today && this.getSettings().separatePlans) {
+        const review = this.getPlanReview();
+        const known = new Set(review.map(({ item, dueDate }) => `${dueDate}:${item.todoId}`));
+        for (const item of tomorrow.items) {
+          const key = `${tomorrow.date}:${item.todoId}`;
+          if (!known.has(key)) review.push({ item, dueDate: tomorrow.date });
+        }
+        store.set('planReview', review);
+        store.set('tomorrowPlan', null);
+      } else if (tomorrow && tomorrow.date <= today) {
+        const seen = new Set(stored.items.map((item) => item.todoId));
+        for (const item of tomorrow.items) {
+          if (!seen.has(item.todoId)) stored.items.push({ ...item, completedAt: undefined });
+        }
+        store.set('todayPlan', stored);
+        store.set('tomorrowPlan', null);
+      }
       return stored;
     }
 
     // Date rolled over (or first run). Build today's plan by merging:
     //   1. Yesterday's unfinished pinned items (carry forward)
-    //   2. Tomorrow's queued items (now today)
+    //   2. Due Tomorrow items when separate plans is off
     // De-duplicated by todoId — if the same todo appears in both, keep the
     // carry-over (more accurate state since it may already have a partial
     // estimate or completion history).
     const carryOver = stored && stored.date < today
       ? stored.items.filter((item) => !item.completedAt)
       : [];
-    const promoted = tomorrow?.items ?? [];
+    const separate = this.getSettings().separatePlans;
+    const dueTomorrow = tomorrow && tomorrow.date <= today ? tomorrow.items : [];
+    const promoted = separate ? [] : dueTomorrow;
 
     const seen = new Set<number>();
     const merged: PinnedTodo[] = [];
@@ -191,9 +211,18 @@ export class PersistenceService {
       }
     }
     // Persist the rolled-over plan so subsequent reads in the same day are
-    // stable, and clear the tomorrow slot now that it's been promoted.
+    // stable, and clear the due Tomorrow slot after handling its items.
     store.set('todayPlan', newToday);
-    if (tomorrow) store.set('tomorrowPlan', null);
+    if (separate && dueTomorrow.length) {
+      const review = this.getPlanReview();
+      const known = new Set(review.map(({ item, dueDate }) => `${dueDate}:${item.todoId}`));
+      for (const item of dueTomorrow) {
+        const key = `${tomorrow!.date}:${item.todoId}`;
+        if (!known.has(key)) review.push({ item, dueDate: tomorrow!.date });
+      }
+      store.set('planReview', review);
+    }
+    if (tomorrow && tomorrow.date <= today) store.set('tomorrowPlan', null);
     return newToday;
   }
 
@@ -201,10 +230,9 @@ export class PersistenceService {
     store.set('todayPlan', plan);
   }
 
-  // The tomorrow plan's `date` field is informational only — the rollover
-  // logic above doesn't gate on it (a tomorrow plan written any time before
-  // midnight will simply be promoted on the next read after the date flips).
+  // Keep future queued items intact until their due date.
   getTomorrowPlan(): TodayPlan {
+    this.getTodayPlan();
     const stored = store.get('tomorrowPlan') as TodayPlan | null;
     if (!stored) {
       const t = new Date();
@@ -217,6 +245,23 @@ export class PersistenceService {
 
   saveTomorrowPlan(plan: TodayPlan): void {
     store.set('tomorrowPlan', plan);
+  }
+
+  getPlanReview(): PlanReviewItem[] {
+    return (store.get('planReview') as PlanReviewItem[]) ?? [];
+  }
+
+  movePlanReview(todoId: number, dueDate: string, target: 'today' | 'tomorrow'): { review: PlanReviewItem[]; plan: TodayPlan } {
+    this.getTodayPlan();
+    const review = this.getPlanReview();
+    const match = review.find(({ item, dueDate: date }) => item.todoId === todoId && date === dueDate);
+    if (!match) throw new Error('Review item not found');
+    const plan = target === 'today' ? this.getTodayPlan() : this.getTomorrowPlan();
+    if (!plan.items.some((item) => item.todoId === todoId)) plan.items.push({ ...match.item, completedAt: undefined });
+    if (target === 'today') this.saveTodayPlan(plan); else this.saveTomorrowPlan(plan);
+    const next = review.filter(({ item, dueDate: date }) => !(item.todoId === todoId && date === dueDate));
+    store.set('planReview', next);
+    return { review: next, plan };
   }
 
   // ── Recent todos ───────────────────────────────────────────
@@ -240,6 +285,7 @@ export class PersistenceService {
   clearTodayAndRecents(): void {
     store.set('todayPlan', null);
     store.set('tomorrowPlan', null);
+    store.set('planReview', []);
     store.set('recentTodos', []);
   }
 

@@ -24,6 +24,13 @@ type Sub = 'today' | 'tomorrow';
 // Tomorrow is the queueing surface — items get promoted at midnight.
 export default function PlanTab({ timerState, records, onOpenSettings, onRefreshRecords }: Props) {
   const [sub, setSub] = useState<Sub>('today');
+  const [quickNote, setQuickNote] = useState('');
+
+  const startQuick = () => {
+    if (!quickNote.trim()) return;
+    window.zenstate.quickRecordTime(quickNote);
+    setQuickNote('');
+  };
 
   return (
     <>
@@ -42,6 +49,16 @@ export default function PlanTab({ timerState, records, onOpenSettings, onRefresh
           <SubTabButton active={sub === 'tomorrow'} onClick={() => setSub('tomorrow')}>Tomorrow</SubTabButton>
         </div>
       </div>
+
+      {sub === 'today' && (
+        <div style={{ maxWidth: 720, margin: '12px auto 0', display: 'flex', gap: 8 }}>
+          <input className="text-input" aria-label="Quick Record Time note"
+            placeholder="Quick Record Time — what are you working on?"
+            value={quickNote} maxLength={120} onChange={(e) => setQuickNote(e.target.value)}
+            onKeyDown={(e) => { if (e.key === 'Enter') startQuick(); }} style={{ flex: 1 }} />
+          <button className="btn btn-primary" disabled={!quickNote.trim()} onClick={startQuick}>Record Time</button>
+        </div>
+      )}
 
       {sub === 'today' && (
         <TodayTab timerState={timerState} records={records} onOpenSettings={onOpenSettings} onRefreshRecords={onRefreshRecords} />
