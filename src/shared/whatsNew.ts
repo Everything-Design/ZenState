@@ -20,6 +20,16 @@ export interface ReleaseHighlight {
 
 export const RELEASE_HIGHLIGHTS: ReleaseHighlight[] = [
   {
+    version: '5.9.1',
+    title: 'Sync time from the dashboard',
+    intro: 'The Sync Basecamp button now posts recorded time that is already mapped.',
+    bullets: [
+      'Sync mapped sessions without opening Timesheet first.',
+      'If any sessions still need a to-do or a retry, Timesheet opens so you can review them.',
+      'See how many sessions synced and how many still need attention.',
+    ],
+  },
+  {
     version: '5.9.0',
     title: 'Capture now, sync when ready',
     intro: 'Record unexpected work immediately and match it to a Basecamp to-do later.',

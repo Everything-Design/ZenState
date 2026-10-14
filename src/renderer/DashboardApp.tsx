@@ -363,6 +363,7 @@ export default function DashboardApp() {
   const refreshRecords = useCallback(async () => {
     const allRecords = await window.zenstate.getRecords() as DailyRecord[];
     setRecords(allRecords);
+    return allRecords;
   }, []);
 
   const handleStatusChange = useCallback((status: AvailabilityStatus) => {

@@ -43,7 +43,7 @@ interface Props {
   licenseState: LicenseState;
   onLicenseStateChange: (state: LicenseState) => void;
   onRequestedTabHandled?: () => void;
-  onRefreshRecords: () => void;
+  onRefreshRecords: () => Promise<DailyRecord[]>;
   onStatusChange: (status: AvailabilityStatus) => void;
   onUserUpdate: (updates: Partial<User>) => void;
   onSignOut: () => void;
@@ -62,6 +62,44 @@ type Tab = 'plan' | 'allocations' | 'team' | 'timesheet' | 'settings';
 export default function DashboardView({ currentUser, peers, timerState, records, statusRevertRemaining, requestedTab, isPro, licenseState, onLicenseStateChange, onRequestedTabHandled, onRefreshRecords, onStatusChange, onUserUpdate, onSignOut }: Props) {
   const [activeTab, setActiveTab] = useState<Tab>('plan');
   const unpostedCount = records.reduce((count, record) => count + record.sessions.filter(sessionNeedsBasecampReview).length, 0);
+  const [syncingBasecamp, setSyncingBasecamp] = useState(false);
+  const [syncNotice, setSyncNotice] = useState<{ error: boolean; message: string } | null>(null);
+
+  async function handleSyncBasecamp() {
+    if (syncingBasecamp) return;
+    setSyncingBasecamp(true);
+    setSyncNotice(null);
+    try {
+      const result = await window.zenstate.bcBackfillTimesheet();
+      const latestRecords = await onRefreshRecords();
+      const remaining = latestRecords.flatMap((record) => record.sessions.filter(sessionNeedsBasecampReview));
+      const unmapped = remaining.filter((session) => !session.basecamp?.todoId && !session.basecamp?.recordingId);
+      if (remaining.length) setActiveTab('timesheet');
+      if (!result.ok) {
+        setSyncNotice({ error: true, message: result.error || 'Basecamp sync failed. Review the remaining sessions in Timesheet.' });
+      } else if (remaining.length) {
+        const synced = result.data?.migrated ?? 0;
+        const needsReview = remaining.length - unmapped.length;
+        setSyncNotice({
+          error: needsReview > 0,
+          message: [
+            synced ? `${synced} ${synced === 1 ? 'session' : 'sessions'} synced.` : '',
+            unmapped.length ? `${unmapped.length} ${unmapped.length === 1 ? 'session needs' : 'sessions need'} a Basecamp to-do.` : '',
+            needsReview ? `${needsReview} ${needsReview === 1 ? 'session needs' : 'sessions need'} review or retry.` : '',
+          ].filter(Boolean).join(' '),
+        });
+      } else {
+        const synced = result.data?.migrated ?? 0;
+        setSyncNotice({ error: false, message: synced
+          ? `${synced} ${synced === 1 ? 'session' : 'sessions'} synced to Basecamp.`
+          : 'All recorded time is already synced to Basecamp.' });
+      }
+    } catch (err) {
+      setSyncNotice({ error: true, message: (err as Error).message || 'Basecamp sync failed.' });
+    } finally {
+      setSyncingBasecamp(false);
+    }
+  }
   useEffect(() => {
     if (!requestedTab) return;
     // Legacy "today" requests (from older code paths or notifications) still
@@ -317,8 +355,14 @@ export default function DashboardView({ currentUser, peers, timerState, records,
             border: '1px solid var(--status-occupied)', borderRadius: 8, background: 'var(--zen-tertiary-bg)',
             color: 'var(--zen-text)', fontFamily: 'inherit', fontSize: 12, boxSizing: 'border-box' }}>
           <span style={{ flex: 1 }}>{unpostedCount} recorded time {unpostedCount === 1 ? 'session is' : 'sessions are'} waiting to sync with Basecamp.</span>
-          <button className="btn btn-primary" onClick={() => setActiveTab('timesheet')}>Sync Basecamp</button>
+          <button className="btn btn-primary" onClick={handleSyncBasecamp} disabled={syncingBasecamp}>
+            {syncingBasecamp ? 'Syncing…' : 'Sync Basecamp'}
+          </button>
         </div>}
+        {syncNotice && <div role={syncNotice.error ? 'alert' : 'status'} style={{
+          color: syncNotice.error ? 'var(--status-occupied)' : 'var(--zen-secondary-text)',
+          fontSize: 12, marginBottom: 12,
+        }}>{syncNotice.message}</div>}
         {activeTab === 'plan' && (
           <PlanTab
             timerState={timerState}
