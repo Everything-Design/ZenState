@@ -39,7 +39,8 @@ jobs:
           $baseline = $releases | Where-Object { -not $_.draft -and -not $_.prerelease -and ($_.assets.name -match '^ZenState-Setup-.*\.exe$') } | Select-Object -First 1
           if (-not $baseline) { throw 'No published Windows baseline found' }
           $asset = $baseline.assets | Where-Object { $_.name -match '^ZenState-Setup-.*\.exe$' } | Select-Object -First 1
-          Invoke-WebRequest $asset.browser_download_url -OutFile baseline.exe
+          gh release download $baseline.tag_name --repo Everything-Design/ZenState --pattern $asset.name --output baseline.exe
+          if ($LASTEXITCODE -ne 0) { throw 'Could not download the published Windows baseline' }
           $install = Join-Path $env:RUNNER_TEMP 'ZenStateUpdateTest'
           Start-Process .\baseline.exe -ArgumentList '/S',"/D=$install" -Wait
           "ZENSTATE_TEST_INSTALL=$install" >> $env:GITHUB_ENV
