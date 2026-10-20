@@ -34,7 +34,7 @@ function hardenWindow(win: BrowserWindow) {
 // Windows + HiDPI; the resize cascades over multiple clicks until content
 // visibly clips.
 export const POPOVER_WIDTH = 360;
-export const POPOVER_HEIGHT = 480;
+export const POPOVER_HEIGHT = 640;
 
 export function createPopoverWindow(url: string): BrowserWindow {
   const win = new BrowserWindow({

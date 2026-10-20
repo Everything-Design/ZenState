@@ -1,6 +1,6 @@
 import React, { useState, useMemo, useEffect, useCallback, useRef } from 'react';
 import { Settings, Timer, LayoutDashboard, MessageCircle, Hourglass, Pin, Play, Megaphone, X, ChevronDown, ChevronRight } from 'lucide-react';
-import { User, AvailabilityStatus, IPC, LicenseState, TodayPlan, PinnedTodo, ReceivedPing, BasecampAuthState } from '../../shared/types';
+import { User, AvailabilityStatus, IPC, LicenseState, TodayPlan, PinnedTodo, ReceivedPing, BasecampAuthState, AppSettings } from '../../shared/types';
 import SendPingSheet from '../components/SendPingSheet';
 import NotificationsPanel from '../components/NotificationsPanel';
 import Avatar from '../components/Avatar';
@@ -71,6 +71,8 @@ export default function MenuBarView({ currentUser, peers, timerState, statusReve
   const [todaySearch, setTodaySearch] = useState('');
   const [quickNote, setQuickNote] = useState('');
   const [quickError, setQuickError] = useState('');
+  const [quickRecordTimeEnabled, setQuickRecordTimeEnabled] = useState(true);
+  const [quickExpanded, setQuickExpanded] = useState(false);
   const quickNoteRef = useRef<HTMLInputElement>(null);
   const [showStatusMessage, setShowStatusMessage] = useState(false);
   const [statusMessageInput, setStatusMessageInput] = useState('');
@@ -80,11 +82,27 @@ export default function MenuBarView({ currentUser, peers, timerState, statusReve
   const [messageText, setMessageText] = useState('');
   const [showRevertPicker, setShowRevertPicker] = useState(false);
   const [todayPlan, setTodayPlan] = useState<TodayPlan | null>(null);
-  // Today remains the default; Quick Record Time stays above both tabs.
+  // Today remains the default; quick capture expands only when requested.
   const [popoverTab, setPopoverTab] = useState<'today' | 'team'>('today');
   const [showPingSheet, setShowPingSheet] = useState(false);
   const [recentPings, setRecentPings] = useState<ReceivedPing[]>([]);
   const [bcConnected, setBcConnected] = useState(false);
+
+  useEffect(() => {
+    let changed = false;
+    const off = window.zenstate.on('settings:updated', (value: unknown) => {
+      changed = true;
+      setQuickRecordTimeEnabled((value as AppSettings).quickRecordTimeEnabled !== false);
+    });
+    window.zenstate.getSettings().then(settings => {
+      if (!changed) setQuickRecordTimeEnabled(settings.quickRecordTimeEnabled !== false);
+    }).catch((e: unknown) => console.warn('[MenuBarView] settings load failed:', e));
+    return off;
+  }, []);
+
+  useEffect(() => {
+    if (quickRecordTimeEnabled && quickExpanded) quickNoteRef.current?.focus();
+  }, [quickRecordTimeEnabled, quickExpanded]);
 
   // Load Today's plan and stay subscribed to changes so the popover shows
   // pinned to-dos as soon as the user pins/unpins from the Dashboard.
@@ -204,6 +222,7 @@ export default function MenuBarView({ currentUser, peers, timerState, statusReve
     window.zenstate.quickRecordTime(note);
     setQuickNote('');
     setQuickError('');
+    setQuickExpanded(false);
   }
 
   // v5.7.0 — Hoisted popover grouping logic. Same shape as TodayTab's
@@ -593,22 +612,29 @@ export default function MenuBarView({ currentUser, peers, timerState, statusReve
         </div>
       )}
 
-      <div style={{ padding: '8px 16px 6px', borderBottom: '1px solid var(--zen-divider)' }}>
-        <div style={{ fontSize: 11, fontWeight: 600, marginBottom: 5 }}>Quick Record Time</div>
-        <div style={{ display: 'flex', gap: 6 }}>
-          <input ref={quickNoteRef} autoFocus className="search-input" aria-label="Quick Record Time note"
-            aria-describedby="quick-time-help" placeholder="What are you working on?"
-            value={quickNote} maxLength={120}
-            onChange={(e) => { setQuickNote(e.target.value); if (quickError) setQuickError(''); }}
-            onKeyDown={(e) => { if (e.key === 'Enter') startQuickTime(); }}
-            style={{ flex: 1, minWidth: 0 }} />
-          <button className="btn btn-primary" disabled={!quickNote.trim()} onClick={startQuickTime}>Start timer</button>
-        </div>
-        <div id="quick-time-help" style={{ fontSize: 10, color: quickError ? 'var(--status-occupied)' : 'var(--zen-secondary-text)', marginTop: 5 }}
-          role={quickError ? 'alert' : undefined}>
-          {quickError || 'Type a short note, then press Enter. You can link the saved time to Basecamp after stopping.'}
-        </div>
-      </div>
+      {quickRecordTimeEnabled && <div className="popover-quick-time">
+        <button className="popover-quick-toggle" aria-expanded={quickExpanded} aria-controls="quick-time-form"
+          onClick={() => setQuickExpanded(expanded => !expanded)}>
+          <Timer size={14} />
+          <span>Quick Record Time</span>
+          {quickExpanded ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
+        </button>
+        {quickExpanded && <div id="quick-time-form" style={{ paddingTop: 6 }}>
+          <div style={{ display: 'flex', gap: 6 }}>
+            <input ref={quickNoteRef} className="search-input" aria-label="Quick Record Time note"
+              aria-describedby="quick-time-help" placeholder="What are you working on?"
+              value={quickNote} maxLength={120}
+              onChange={(e) => { setQuickNote(e.target.value); if (quickError) setQuickError(''); }}
+              onKeyDown={(e) => { if (e.key === 'Enter') startQuickTime(); }}
+              style={{ flex: 1, minWidth: 0 }} />
+            <button className="btn btn-primary" disabled={!quickNote.trim()} onClick={startQuickTime}>Start timer</button>
+          </div>
+          <div id="quick-time-help" style={{ fontSize: 10, color: quickError ? 'var(--status-occupied)' : 'var(--zen-secondary-text)', marginTop: 5 }}
+            role={quickError ? 'alert' : undefined}>
+            {quickError || 'Link this time to Basecamp after stopping.'}
+          </div>
+        </div>}
+      </div>}
 
       {/* Tab bar — segmented control switching the body between Today and Team.
           Status (above) applies to both modes globally; the active timer banner (above)
@@ -668,6 +694,7 @@ export default function MenuBarView({ currentUser, peers, timerState, statusReve
       </div>
 
       {/* TODAY tab content */}
+      <div className="popover-content">
       {popoverTab === 'today' && (
         <>
           {todayPlan && todayPlan.items.length > 0 && (
@@ -684,7 +711,7 @@ export default function MenuBarView({ currentUser, peers, timerState, statusReve
               <div style={{ fontSize: 'var(--text-xs)', color: 'var(--zen-tertiary-text)' }}>Loading…</div>
             </div>
           ) : todayPlan.items.length > 0 ? (
-            <div style={{ padding: '6px 16px 0', flex: 1, overflowY: 'auto' }}>
+            <div style={{ padding: '6px 16px 0' }}>
               <div style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
                 {/* v5.7.0 — Sort completed items to the bottom, THEN group by
                 folder so users with multiple projects don't see one long flat
@@ -1013,6 +1040,8 @@ export default function MenuBarView({ currentUser, peers, timerState, statusReve
           </div>
         </>
       )}
+
+      </div>
 
       {/* Footer */}
       <div className="footer">

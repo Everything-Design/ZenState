@@ -43,6 +43,7 @@ const DEFAULT_APP_SETTINGS: AppSettings = {
   miniTimerEnabled: true, // visible by default — solves the "can't see timer in full-screen" problem
   miniTimerAutoDim: false, // off by default — opt-in for users who find the pill too prominent
   separatePlans: false,
+  quickRecordTimeEnabled: true,
 };
 
 const store = createStoreWithRecovery({

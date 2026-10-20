@@ -603,6 +603,15 @@ export default function SettingsTab({ currentUser, peers, isPro, licenseState, o
 
           <div className="divider" />
 
+          <label style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 8, fontSize: 13 }}>
+            <input type="checkbox" checked={appSettings.quickRecordTimeEnabled !== false}
+              onChange={(e) => updateAppSettings({ quickRecordTimeEnabled: e.target.checked })} />
+            Show Quick Record Time in the menu popup
+          </label>
+          <div style={{ fontSize: 10, color: 'var(--zen-tertiary-text)', marginBottom: 12 }}>
+            Opens a compact timer form when you need it. You can also record time from the dashboard.
+          </div>
+
           {/* Productivity (Pro features) */}
           <div style={{ fontSize: 12, fontWeight: 600, marginBottom: 8, marginTop: 8 }}>
             Productivity {!isPro && <ProBadge />}

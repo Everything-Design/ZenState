@@ -9,7 +9,7 @@ export interface WeeklyOverview extends Omit<WeeklyAllocations, 'projectScope' |
     category: 'billable' | 'growth'; status: string; expectedEnd: string | null;
     progress: { percent: number; date: string } | null;
   })[];
-  totals: { category: 'billable' | 'growth'; plannedHours: number; loggedHours: number | null; targetHours: number | null }[];
+  totals: { category: 'billable' | 'growth'; plannedHours: number; loggedHours: number | null; targetHours: number | null; targetToDateHours: number | null }[];
   capacity: { weekStart: string; availableHours: number; plannedHours: number; tentativeHours: number; freeHours: number; overallocatedHours: number }[];
   leave: { date: string; hours: number; kind: 'leave' | 'break'; half: 'first' | 'second' | null; plannedHours: number; conflict: boolean }[];
   needsYou: { id: string; kind: 'request' | 'progress' | 'planning' | 'time_review'; text: string; date: string }[];
@@ -36,8 +36,8 @@ export function parseWeeklyOverview(value: unknown, accountId: string, week: str
   if (!Array.isArray(d.totals) || d.totals.length !== 2 || !Array.isArray(d.capacity) || d.capacity.length !== 2
     || !Array.isArray(d.leave) || d.leave.length > 100 || !Array.isArray(d.needsYou) || d.needsYou.length > 5000) fail();
   const totals = d.totals.map((v, i) => {
-    if (v.category !== ['billable', 'growth'][i] || !number(v.plannedHours) || !nullableNumber(v.loggedHours) || !nullableNumber(v.targetHours)) fail();
-    return { category: v.category, plannedHours: v.plannedHours, loggedHours: v.loggedHours, targetHours: v.targetHours };
+    if (v.category !== ['billable', 'growth'][i] || !number(v.plannedHours) || !nullableNumber(v.loggedHours) || !nullableNumber(v.targetHours) || !nullableNumber(v.targetToDateHours)) fail();
+    return { category: v.category, plannedHours: v.plannedHours, loggedHours: v.loggedHours, targetHours: v.targetHours, targetToDateHours: v.targetToDateHours };
   });
   const capacity = d.capacity.map((v, i) => {
     if (v.weekStart !== shiftAllocationDate(week, i * 7) || ![v.availableHours, v.plannedHours, v.tentativeHours, v.freeHours, v.overallocatedHours].every(number)) fail();

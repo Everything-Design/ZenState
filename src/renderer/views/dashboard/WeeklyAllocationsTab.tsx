@@ -109,7 +109,7 @@ export default function WeeklyAllocationsTab({ records, timerState, onOpenTimesh
       <div className="weekly-overview-summary">
         {data.totals.map(total => <article key={total.category}>
           <h3>{total.category === 'billable' ? 'Billable' : 'Growth time'}</h3>
-          <strong>{hours(total.loggedHours)} <span>logged</span></strong>
+          <strong>{hours(total.loggedHours)} <span>logged{total.targetToDateHours !== null && ` of ${hours(total.targetToDateHours)} target so far`}</span></strong>
           <p>{hours(total.plannedHours)} planned · {total.targetHours === null ? 'Target not set' : `${hours(total.targetHours)} target`}</p>
         </article>)}
       </div>

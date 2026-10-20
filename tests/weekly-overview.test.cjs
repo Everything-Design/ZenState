@@ -7,6 +7,17 @@ test('personal schema allowlists every level, preserves growth, overruns, leave 
  const f=fixture();f.salary=999999;f.projects[0].budget=999999;f.totals[0].revenue=999999;f.needsYou[0].otherPerson=999999;f.capacity[0].cost=999999;
  const d=parseWeeklyOverview(f,'123','2026-10-05');assert.equal(d.totals[1].category,'growth');assert.equal(d.projects[0].remainingHours,-2);assert.equal(d.leave[0].half,'second');assert.ok(!JSON.stringify(d).includes('999999'));
 });
+test('preserves target-to-date hours including zero and null, and rejects invalid values',()=>{
+ for(const value of [14,0,null]){
+  const f=fixture();f.totals[0].targetToDateHours=value;f.totals[1].targetToDateHours=null;
+  const d=parseWeeklyOverview(f,'123','2026-10-05');
+  assert.equal(d.totals[0].targetToDateHours,value);assert.equal(d.totals[1].targetToDateHours,null);assert.equal(d.totals[0].targetHours,21.6);
+ }
+ for(const value of [-1,'14',undefined,NaN,Infinity]){
+  const f=fixture();f.totals[0].targetToDateHours=value;
+  assert.throws(()=>parseWeeklyOverview(f,'123','2026-10-05'));
+ }
+});
 test('rejects wrong account/week, incomplete or malformed additions',()=>{
  assert.throws(()=>parseWeeklyOverview(fixture(),'999','2026-10-05'));assert.throws(()=>parseWeeklyOverview(fixture(),'123','2026-10-12'));
  for(const mutate of [f=>delete f.capacity,f=>f.projects[0].progress.percent=101,f=>f.totals[0].targetHours=-1,f=>f.leave[0].date='2026-02-30',f=>f.capacity[1].weekStart='2026-10-19',f=>f.needsYou[0].kind='team_summary',f=>f.projectScope='billable']){const f=fixture();mutate(f);assert.throws(()=>parseWeeklyOverview(f,'123','2026-10-05'));}

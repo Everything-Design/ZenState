@@ -169,9 +169,9 @@ export function positionPopover(window: BrowserWindow) {
   // click — width shrinks first, then height once x can't be clamped any
   // further. Multi-click users see the popover progressively collapse and
   // the content visibly clipped at the edges. Sourcing the dimensions from
-  // the createPopoverWindow constants keeps every show grounded to 360x480.
+  // the createPopoverWindow constants keeps every show at a stable size.
   const width = POPOVER_WIDTH;
-  const height = POPOVER_HEIGHT;
+  let height = POPOVER_HEIGHT;
 
   let x = Math.round(trayBounds.x + trayBounds.width / 2 - width / 2);
   let y: number;
@@ -194,14 +194,16 @@ export function positionPopover(window: BrowserWindow) {
     const wa = display.workArea;
     // Leave an 8px breathing margin from the work-area edges.
     const margin = 8;
+    height = Math.min(POPOVER_HEIGHT, Math.max(1, wa.height - margin * 2));
+    if (process.platform !== 'darwin') y = Math.round(trayBounds.y - height);
     const minX = wa.x + margin;
     const maxX = wa.x + wa.width - width - margin;
     const minY = wa.y + margin;
     const maxY = wa.y + wa.height - height - margin;
-    if (Number.isFinite(maxX) && maxX > minX) {
+    if (Number.isFinite(maxX) && maxX >= minX) {
       x = Math.max(minX, Math.min(x, maxX));
     }
-    if (Number.isFinite(maxY) && maxY > minY) {
+    if (Number.isFinite(maxY) && maxY >= minY) {
       y = Math.max(minY, Math.min(y, maxY));
     }
   } catch (err) {

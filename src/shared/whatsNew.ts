@@ -20,6 +20,16 @@ export interface ReleaseHighlight {
 
 export const RELEASE_HIGHLIGHTS: ReleaseHighlight[] = [
   {
+    version: '5.9.2',
+    title: 'More room in the menu popup',
+    intro: 'A clearer popup and fairer weekly targets.',
+    bullets: [
+      'The menu popup is taller and fits your screen, with more room for Today and Team.',
+      'Quick Record Time expands when clicked. Hide it from the popup in Settings → General if you prefer.',
+      'Your running week shows logged hours against the target through yesterday, alongside the full-week target.',
+    ],
+  },
+  {
     version: '5.9.1',
     title: 'Sync time from the dashboard',
     intro: 'The Sync Basecamp button now posts recorded time that is already mapped.',

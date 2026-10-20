@@ -19,7 +19,9 @@ Download the latest build from [Releases](https://github.com/Everything-Design/Z
 | Platform | File |
 |---|---|
 | macOS (Apple Silicon) | `ZenState-x.y.z-arm64.dmg` |
+| macOS (Intel) | `ZenState-x.y.z-x64.dmg` |
 | Windows (x64) | `ZenState-Setup-x.y.z.exe` |
+| Linux (x64) | `ZenState-x.y.z-x86_64.AppImage` or `ZenState-x.y.z-amd64.deb` |
 
 > **First-launch on macOS** — the app isn't yet notarized with Apple, so Gatekeeper will refuse to open it. Right-click the app in `/Applications` → **Open** → confirm. You only need to do this once.
 
@@ -66,6 +68,14 @@ When you stop the timer:
 ### Mark things done
 
 Each pinned to-do has a checkbox. Click it when you finish. The row dims and strikes through; the popover header shows `Today · 3/5` (3 still active out of 5 pinned). Marking a task done while its timer is running auto-stops the timer.
+
+### Quick Record Time in the menu popup
+
+Click the ZenState menu-bar or tray icon, expand **Quick Record Time**, and enter a short note to start recording. The taller popup fits your screen and keeps Today, Team, and the footer controls accessible. To hide quick capture from this popup, turn off **Settings → General → Show Quick Record Time in the menu popup**. Capture in the dashboard and floating timer stays available.
+
+### Weekly allocation
+
+For the running week, logged hours are shown against the target through yesterday, the last complete day in Ops. Planned hours and the full-week target remain below. Other weeks keep their full-week display.
 
 ### Status & team
 
@@ -118,8 +128,8 @@ Known issue — the WiFi helper binary is Apple Silicon-only. Doesn't affect any
 ## Building from source
 
 ```bash
-# Install
-npm install
+# Install exact locked dependencies
+npm ci
 
 # Run in dev (hot-reload renderer + watch main)
 npm run dev
@@ -137,6 +147,8 @@ npm run dist:linux # Linux x64 AppImage + Debian package
 Packaging commands never publish. Build all platforms using the manual **Validate desktop release** workflow, then use its combined `verified-release-*` artifact. The old per-platform publish shortcuts have been removed because they could expose an incomplete update feed.
 
 Before public release, follow [Desktop release validation](docs/release-validation.md): finish signing and native install/update tests, set the stable package version, verify the complete asset set, upload it to a draft, and publish only when every platform is ready. Tests and local packaging alone do not establish release readiness.
+
+For OS-specific commands and the complete handoff, use [Build and release ZenState](docs/build-and-release.md).
 
 ---
 

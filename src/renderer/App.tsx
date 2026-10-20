@@ -172,7 +172,7 @@ export default function App() {
   }
 
   return (
-    <>
+    <div className="popover-shell">
       {/* Update notification banner */}
       {updateAvailable && (
         <div style={{
@@ -214,6 +214,6 @@ export default function App() {
         onUserUpdate={handleUserUpdate}
         onOpenSettings={() => setView('settings')}
       />
-    </>
+    </div>
   );
 }

@@ -117,13 +117,15 @@
       "category": "billable",
       "plannedHours": 32,
       "loggedHours": 36,
-      "targetHours": 21.6
+      "targetHours": 21.6,
+      "targetToDateHours": 9.6
     },
     {
       "category": "growth",
       "plannedHours": 8,
       "loggedHours": 4,
-      "targetHours": 14.4
+      "targetHours": 14.4,
+      "targetToDateHours": 6.4
     }
   ],
   "capacity": [

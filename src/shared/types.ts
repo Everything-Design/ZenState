@@ -169,6 +169,7 @@ export interface AppSettings {
   // working day). User can change in Settings → General → Productivity.
   dailyHoursTarget?: number;        // default 8
   separatePlans?: boolean;          // keep due Tomorrow items for explicit review at rollover
+  quickRecordTimeEnabled?: boolean; // show the expandable quick timer in the menu popup; default on
 }
 
 // ── Basecamp Types ─────────────────────────────────────────────
