@@ -1,8 +1,21 @@
 # Desktop release validation
 
+## Stable v5.9.3 update migration — 2026-10-20
+
+[v5.9.3 in the public downloads repository](https://github.com/Everything-Design/ZenState-Releases/releases/tag/v5.9.3) and [the transition release for existing installations](https://github.com/Everything-Design/ZenState/releases/tag/v5.9.3) contain the same 16 verified assets. Source tag `v5.9.3` points to `c27b06729a5359a8fb7332cb10404d1890abd225`. The downloads repository and its release tag contain only README history, with no application source commit or source tag copied across.
+
+- All 41 local tests, both TypeScript configurations and the renderer production build passed. Complete stable artifact validation passed for Windows x64, Mac arm64/x64 and Linux x64. The packaged Mac apps match the tested compiled source; both extracted ZIP apps match their verified packaged apps and use `Everything-Design/ZenState-Releases` with the existing updater cache name.
+- [Build and installed-update run 39421522512](https://github.com/Everything-Design/ZenState/actions/runs/39421522512) passed all seven jobs, including native Windows, AppImage and Debian installation/restart/data-retention checks. Windows checked that the installed candidate restores the new public update destination.
+- [Windows run 39424758210](https://github.com/Everything-Design/ZenState/actions/runs/39424758210) also passed on `5c9b5adf19b376fad7e1f4a3982a6c45f7798e9e`, validating the authenticated CI baseline download needed when source becomes private. This workflow-only follow-up does not change the packaged application.
+- Both Mac DMGs and both extracted ZIP signatures passed verification. Production signing requirements match the previous release. An isolated, re-signed Mac ARM fixture upgraded from v5.9.2 to v5.9.3 through native Squirrel, restarted, retained a local session and settings, and verified the restored `ZenState-Releases` configuration. The installed app and its profile were not modified. Intel hardware runtime and live Basecamp writes were not tested.
+- Both drafts had all 16 assets, and GitHub's sizes and SHA-256 digests matched the local files, before publication. The downloads release was published and anonymously verified before publishing the source transition release.
+- Public verification passed for all 32 asset URLs across the two repositories, byte equality of all six platform manifests, and eight live GitHubProvider platform/architecture checks without credentials. Evidence, checksums and native Mac events are under `dist/release-5.9.3/`, including `public-migration-checks.json`, `asset-manifest.json`, `SHA256SUMS` and `mac-native-upgrade.jsonl`.
+
+The source repository remains **public** until every team device is confirmed on v5.9.3 or newer. Publication and download counts do not establish device migration. Follow [the migration checklist](update-migration.md) before changing visibility. Existing apps continue running; older versions lose automatic updates if source is made private before they install the transition.
+
 ## Stable v5.9.2 release validation
 
-[ZenState v5.9.2](https://github.com/Everything-Design/ZenState/releases/tag/v5.9.2) is the latest public stable release. The final tag points to `d6ac59865b9669289a6ff253237d253e1c6490f5` on `main`.
+[ZenState v5.9.2](https://github.com/Everything-Design/ZenState/releases/tag/v5.9.2) was published as a stable release. The final tag points to `d6ac59865b9669289a6ff253237d253e1c6490f5` on `main`.
 
 - The user approved the local menu-popup changes. The popup is taller, fits the tray display, keeps its footer accessible, and offers an expandable Quick Record Time form plus a popup-only visibility preference. Weekly allocation preserves the Ops target through yesterday for the running week. Dashboard and floating-timer capture are unchanged.
 - All 41 automated tests, TypeScript checks and renderer builds passed. The isolated Electron UI check covered compact and expanded capture, focus, draft retention, starting a timer, Today/Team scrolling at short heights, the update banner, and saved Settings choices.

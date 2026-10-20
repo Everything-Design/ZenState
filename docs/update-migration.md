@@ -23,6 +23,6 @@ Follow [build and release](build-and-release.md). Use source-repository drafts a
 
 ## Completion evidence
 
-- Transition release publication and automated verification: recorded in [release validation](release-validation.md).
+- Transition release publication and automated verification: v5.9.3 is published in both repositories; recorded in [release validation](release-validation.md).
 - Team device migration: pending confirmation; do not infer completion from successful build or publication.
 - Source visibility change: pending team device confirmation.
