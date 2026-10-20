@@ -6,7 +6,12 @@ const path = require('node:path');
 const { createRequire } = require('node:module');
 const file = path.resolve(__dirname, '../dist/main/tray.js');
 const localRequire = createRequire(file);
-const { POPOVER_WIDTH, POPOVER_HEIGHT } = localRequire('./windows');
+const windows = { exports: {} };
+vm.runInNewContext(fs.readFileSync(localRequire.resolve('./windows'), 'utf8'), {
+  module: windows, exports: windows.exports, process,
+  require: name => name === 'electron' ? {} : localRequire(name),
+});
+const { POPOVER_WIDTH, POPOVER_HEIGHT } = windows.exports;
 
 test('popup fits the tray display and does not shrink across repeated opens on Mac, Windows or Linux', () => {
   for (const platform of ['darwin', 'win32', 'linux']) {
@@ -27,7 +32,7 @@ test('popup fits the tray display and does not shrink across repeated opens on M
       const module = { exports: {} };
       vm.runInNewContext(fs.readFileSync(file, 'utf8'), {
         module, exports: module.exports, __dirname: path.dirname(file), process: { platform }, global: {}, console,
-        require: name => name === 'electron' ? electron : localRequire(name),
+        require: name => name === 'electron' ? electron : name === './windows' ? windows.exports : localRequire(name),
       });
       module.exports.createTray({ onClick() {}, onStatusChange() {}, onOpenDashboard() {} });
       const bounds = [];
