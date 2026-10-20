@@ -20,6 +20,14 @@ export interface ReleaseHighlight {
 
 export const RELEASE_HIGHLIGHTS: ReleaseHighlight[] = [
   {
+    version: '5.9.3',
+    title: 'Keep automatic updates working',
+    bullets: [
+      'Install this update to keep receiving future ZenState versions automatically.',
+      'Your saved time, settings and Basecamp connection carry over as usual.',
+    ],
+  },
+  {
     version: '5.9.2',
     title: 'More room in the menu popup',
     intro: 'A clearer popup and fairer weekly targets.',

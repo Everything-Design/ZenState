@@ -271,7 +271,7 @@ app.on('ready', async () => {
     console.error('[startup] createTray failed:', err);
     dialog.showErrorBox(
       'ZenState couldn\'t start',
-      'Could not create the system tray icon. This usually means the install is incomplete or your antivirus has quarantined a file. Try reinstalling ZenState from https://github.com/Everything-Design/ZenState_V3/releases/latest.',
+      'Could not create the system tray icon. This usually means the install is incomplete or your antivirus has quarantined a file. Try reinstalling ZenState from https://github.com/Everything-Design/ZenState-Releases/releases/latest.',
     );
     // Don't return — let the app try to continue. The dashboard may still work.
   }

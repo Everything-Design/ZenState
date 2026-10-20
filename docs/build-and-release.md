@@ -1,6 +1,8 @@
 # Build and release ZenState
 
-This is the repeatable build path for the current desktop app. As of v5.9.2, it produces macOS Apple Silicon and Intel DMG installers and ZIP update archives, a Windows x64 NSIS installer, and Linux x64 AppImage and Debian packages. Packaging commands use `--publish never`; they do not change the public update feed.
+This is the repeatable build path for the current desktop app. As of v5.9.3, it produces macOS Apple Silicon and Intel DMG installers and ZIP update archives, a Windows x64 NSIS installer, and Linux x64 AppImage and Debian packages. Packaging commands use `--publish never`; they do not change the public update feed.
+
+Application source and CI live in `Everything-Design/ZenState`. Installed v5.9.3 and newer apps get updates from the public, downloads-only `Everything-Design/ZenState-Releases` repository. Never push application source, source tags or source history to the downloads repository. See [the update migration](update-migration.md) before changing source visibility.
 
 ## Prepare the source
 
@@ -124,14 +126,23 @@ Run these release commands in zsh/bash on the signing Mac. Start with `version="
    gh run watch RUN_ID --exit-status
    ```
 
-6. Publish only after all checks pass:
+6. Copy the verified 16 assets and release notes to a **draft** in `Everything-Design/ZenState-Releases`. Create its release tag from that repository's own `main` branch (which contains only its README), rather than pushing the application source tag:
 
    ```sh
-   gh release edit "v$version" --draft=false --latest
-   gh api repos/Everything-Design/ZenState/releases/latest --jq '{tag_name, draft, asset_count: (.assets | length)}'
+   gh release create "v$version" --repo Everything-Design/ZenState-Releases --target main --draft --title "ZenState v$version" --notes-file ".v$version-release-notes.md"
+   gh release upload "v$version" --repo Everything-Design/ZenState-Releases "dist/release-$version/windows/"* "dist/release-$version/mac/ZenState-$version-"* "dist/release-$version/mac/latest-mac.yml" "dist/release-$version/linux/"* "$release_dir/SHA256SUMS"
+   ```
+
+   Check all 16 sizes and SHA-256 digests against the source draft. Publish the downloads repository first, only after all checks pass:
+
+   ```sh
+   gh release edit "v$version" --repo Everything-Design/ZenState-Releases --draft=false --latest
+   gh api repos/Everything-Design/ZenState-Releases/releases/latest --jq '{tag_name, draft, asset_count: (.assets | length)}'
    ```
 
    Confirm the latest tag is `vX.Y.Z`, all 16 public asset URLs return HTTP 200, and the public `latest.yml`, `latest-mac.yml`, and `latest-linux.yml` match the verified local files. Record the run IDs and results in [release validation](release-validation.md).
+
+   For the v5.9.3 transition only, also publish the identical source-repository draft with `gh release edit "v$version" --repo Everything-Design/ZenState --draft=false --latest`. This lets existing installations discover the transition. Keep the source repository public until all team devices are confirmed on v5.9.3 or newer. Later source drafts can stay private staging releases for CI; the public downloads repository is the distribution destination.
 
 ## Final checklist
 

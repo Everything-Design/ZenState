@@ -79,7 +79,7 @@ app.whenReady().then(()=>{
       assert.equal(sessions.length,1);assert.equal(sessions[0].taskLabel,'Windows upgrade sentinel');assert.equal(sessions[0].duration,120);
       assert.equal(data.appSettings.miniTimerEnabled,false);
       const feedConfig=yaml.load(fs.readFileSync(path.join(resources,'app-update.yml'),'utf8'));
-      assert.equal(feedConfig.provider,'github');assert.equal(feedConfig.repo,'ZenState');
+      assert.equal(feedConfig.provider,'github');assert.equal(feedConfig.owner,'Everything-Design');assert.equal(feedConfig.repo,'ZenState-Releases');
       const result={passed:true,from:pkg.version,to:installed.version,restartedPids:running,retainedSession:true,retainedSettings:true,productionFeedRestored:true};
       fs.writeFileSync(path.join(evidence,'result.json'),JSON.stringify(result,null,2));console.log(result);success=true;break;
     }

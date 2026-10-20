@@ -69,7 +69,7 @@ function verifyApp(resources,version) {
   assert.ok(!files.some(p=>/(?:^|\/)\.env(?:\.|$)|\.pem$|\.p12$/i.test(p)),'Credential file packaged');
   for(const icon of ['tray-available.png','tray-occupied.png','tray-focused.png','tray-offline.png'])assert.ok(fs.statSync(path.join(resources,'icons',icon)).size>0);
   const feed=yaml.load(fs.readFileSync(path.join(resources,'app-update.yml'),'utf8'));
-  assert.equal(feed.provider,'github');assert.equal(feed.owner,'Everything-Design');assert.equal(feed.repo,'ZenState');
+  assert.equal(feed.provider,'github');assert.equal(feed.owner,'Everything-Design');assert.equal(feed.repo,'ZenState-Releases');
   return {resources,version,packagedFiles:files.length};
 }
 function run(dirs,complete=false,artifactsOnly=false) {

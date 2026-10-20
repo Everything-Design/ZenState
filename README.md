@@ -14,7 +14,7 @@ It runs from the macOS menu bar (or the Windows tray) and stays out of the way.
 
 ## Install
 
-Download the latest build from [Releases](https://github.com/Everything-Design/ZenState/releases/latest):
+Download the latest build from [Releases](https://github.com/Everything-Design/ZenState-Releases/releases/latest):
 
 | Platform | File |
 |---|---|
