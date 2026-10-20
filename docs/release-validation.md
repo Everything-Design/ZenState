@@ -1,8 +1,21 @@
 # Desktop release validation
 
+## Stable v5.9.2 release validation
+
+[ZenState v5.9.2](https://github.com/Everything-Design/ZenState/releases/tag/v5.9.2) is the latest public stable release. The final tag points to `d6ac59865b9669289a6ff253237d253e1c6490f5` on `main`.
+
+- The user approved the local menu-popup changes. The popup is taller, fits the tray display, keeps its footer accessible, and offers an expandable Quick Record Time form plus a popup-only visibility preference. Weekly allocation preserves the Ops target through yesterday for the running week. Dashboard and floating-timer capture are unchanged.
+- All 41 automated tests, TypeScript checks and renderer builds passed. The isolated Electron UI check covered compact and expanded capture, focus, draft retention, starting a timer, Today/Team scrolling at short heights, the update banner, and saved Settings choices.
+- [Build run 39404933249](https://github.com/Everything-Design/ZenState/actions/runs/39404933249) produced the Windows and Linux release packages and passed native packaged-source and combined artifact checks. [Final run 39410084142](https://github.com/Everything-Design/ZenState/actions/runs/39410084142) passed all seven jobs, including Windows, Mac and Linux builds, combined verification, and installed Windows, AppImage and Debian updates against the draft assets with retained data.
+- The packages were built from application sources at `9193a543ed91779ad00dbfb00dab6471f0d43908`. The final tag adds only a unit-test isolation fix: it no longer loads the Electron binary during popup geometry tests. Application sources, build configuration, package version and lockfile are identical between those commits.
+- Both locally built Mac architectures retain the v5.9.1 Apple Development signing requirement. Deep/strict signatures passed for the unpacked apps and apps extracted from the update ZIPs; both DMG checksums and packaged-source parity checks passed. An isolated native Mac ARM v5.9.1 → v5.9.2 update passed download, signature verification, installation, restart, and retention of a saved session and settings. Only disposable copies used a probe, separate app identifier and profile; the release packages were unchanged.
+- Complete stable manifest validation passed. All 16 public assets match local SHA-256 digests and sizes, all 16 public download URLs returned HTTP 200, and the three live updater manifests are byte-identical to the verified local files. Evidence is under `dist/release-5.9.2/`.
+- The two local test builds and disposable Mac validation app copies were moved to Trash. The installed production app and all user data were preserved; no test bundle remains under Applications or the current release folder.
+- Intel Mac hardware testing, Windows/Linux office-policy testing and independent live Basecamp writes were not performed. Mac notarization remains omitted under the existing internal release policy.
+
 ## Stable v5.9.1 release validation
 
-[ZenState v5.9.1](https://github.com/Everything-Design/ZenState/releases/tag/v5.9.1) is the latest public stable release. Its tag and installers correspond to `a525522d0a0132bdc4ff9bebe09306eda2b10f7c` on `main`.
+[ZenState v5.9.1](https://github.com/Everything-Design/ZenState/releases/tag/v5.9.1) is the previous public stable release. Its tag and installers correspond to `a525522d0a0132bdc4ff9bebe09306eda2b10f7c` on `main`.
 
 - The user tested the dashboard Basecamp sync change in a local Mac build. All 39 automated tests, the TypeScript check and renderer build passed locally and in CI; the production dependency audit reported zero known vulnerabilities.
 - [Build run 38526208947](https://github.com/Everything-Design/ZenState/actions/runs/38526208947) passed Windows x64, Mac arm64/x64 and Linux x64 packaged-source checks and combined artifact verification. [Final run 38530010431](https://github.com/Everything-Design/ZenState/actions/runs/38530010431) repeated those checks and passed installed Windows, Linux AppImage and Debian updates with retained local data.
@@ -12,7 +25,7 @@
 
 ## Stable v5.9.0 release validation
 
-[ZenState v5.9.0](https://github.com/Everything-Design/ZenState/releases/tag/v5.9.0) is the previous public stable release. Its tag and all installers point to `2022e4bb51827f89a486e72b2bb3c86e4e1953c1` on `main`.
+[ZenState v5.9.0](https://github.com/Everything-Design/ZenState/releases/tag/v5.9.0) is an earlier public stable release. Its tag and all installers point to `2022e4bb51827f89a486e72b2bb3c86e4e1953c1` on `main`.
 
 - All 39 local tests, both TypeScript configurations and the production renderer build passed. The production dependency audit reported zero known vulnerabilities. The full audit reports advisories in development tooling; no affected package is in the production dependency audit.
 - [Build run 38298443277](https://github.com/Everything-Design/ZenState/actions/runs/38298443277) passed Windows x64, Mac arm64/x64 and Linux x64 builds, packaged-source checks and combined artifact verification. [Final run 38301223443](https://github.com/Everything-Design/ZenState/actions/runs/38301223443) repeated those checks and passed installed Windows, Linux AppImage and Debian updates with retained local data. The separate [Windows update run 38299832655](https://github.com/Everything-Design/ZenState/actions/runs/38299832655) also passed from the public v5.8.6 installer.
