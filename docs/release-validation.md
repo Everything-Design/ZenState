@@ -1,5 +1,19 @@
 # Desktop release validation
 
+## Stable v5.9.4 release validation — 2026-11-05
+
+[ZenState v5.9.4](https://github.com/Everything-Design/ZenState-Releases/releases/tag/v5.9.4) is published as the latest stable release in the downloads repository. Source tag `v5.9.4` points to `e3b5b3326783850d64929d5bc029cfa4dc9e10ae`. This release replaces the placeholder in Settings → About with the existing ZenState app icon.
+
+- All 41 local tests, TypeScript checks and the production build passed. [Build run 42050369657](https://github.com/Everything-Design/ZenState/actions/runs/42050369657) passed native Windows, Mac and Linux builds, packaged-source checks and combined artifact validation. The release uses the signed local Mac packages and native CI Windows/Linux packages from the tagged application source.
+- Both Mac architectures and their extracted ZIP apps passed deep/strict signature verification, with the same designated signing requirement as v5.9.3. Both DMG checksums passed. The packaged source and About icon match the tested build.
+- An isolated, re-signed Mac ARM fixture upgraded from v5.9.3 to v5.9.4 through native Squirrel, including download, signature verification, installation, restart and retention of a saved session and settings. It also verified the retained `ZenState-Releases` update destination. The installed app and its profile were not modified; the release packages were unchanged.
+- Complete stable artifact verification passed. Both GitHub drafts contained all 16 release files before publication; each asset matched its local size and SHA-256 digest. The source-repository release remains a staging draft; only the downloads-repository release is public.
+- [Native update run 42054604095](https://github.com/Everything-Design/ZenState/actions/runs/42054604095) passed Windows v5.9.3 → v5.9.4 and Linux AppImage/Debian fixture → v5.9.4 installation, restart and session/settings retention against the exact staged files. Windows also verified restoration of the public update destination. Windows and Linux builds passed again in this run. Its redundant Mac rebuild remained queued without a runner for over nine minutes, so that job and the dependent combined check were cancelled after the earlier complete build run and all native update jobs had passed. The overall second-run status is therefore cancelled, with all three installed-update jobs successful.
+- All 16 public download URLs returned HTTP 200. Published sizes and SHA-256 digests match the local release files, and all three live updater manifests are byte-identical to the tested files.
+- Anonymous live `GitHubProvider` checks resolve v5.9.4 and the correct update artifact for Windows x64, Mac arm64/x64 and Linux x64. Evidence, checksums, native update results and Mac events are under `dist/release-5.9.4/`.
+
+Intel Mac hardware runtime, office-policy testing and independent live Basecamp writes were not tested. Mac notarization remains omitted under the existing internal release policy; Windows remains unsigned.
+
 ## Stable v5.9.3 update migration — 2026-10-20
 
 [v5.9.3 in the public downloads repository](https://github.com/Everything-Design/ZenState-Releases/releases/tag/v5.9.3) and [the transition release for existing installations](https://github.com/Everything-Design/ZenState/releases/tag/v5.9.3) contain the same 16 verified assets. Source tag `v5.9.3` points to `c27b06729a5359a8fb7332cb10404d1890abd225`. The downloads repository and its release tag contain only README history, with no application source commit or source tag copied across.
