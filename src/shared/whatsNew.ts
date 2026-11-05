@@ -20,6 +20,13 @@ export interface ReleaseHighlight {
 
 export const RELEASE_HIGHLIGHTS: ReleaseHighlight[] = [
   {
+    version: '5.9.4',
+    title: 'The correct ZenState icon',
+    bullets: [
+      'Settings → About now shows the ZenState app icon.',
+    ],
+  },
+  {
     version: '5.9.3',
     title: 'Keep automatic updates working',
     bullets: [

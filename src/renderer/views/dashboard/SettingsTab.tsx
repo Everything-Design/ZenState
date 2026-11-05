@@ -920,23 +920,12 @@ export default function SettingsTab({ currentUser, peers, isPro, licenseState, o
       {activeSection === 'about' && (
         <div className="card" style={{ textAlign: 'center' }}>
           {/* App Icon */}
-          <div style={{
+          <img src="./icon.png" alt="ZenState" style={{
             width: 80,
             height: 80,
-            borderRadius: '50%',
-            background: 'var(--zen-primary)',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
+            display: 'block',
             margin: '16px auto',
-          }}>
-            <svg width="40" height="40" viewBox="0 0 40 40" fill="none">
-              <circle cx="20" cy="12" r="5" fill="white"/>
-              <circle cx="12" cy="24" r="5" fill="white"/>
-              <circle cx="28" cy="24" r="5" fill="white"/>
-              <circle cx="20" cy="20" r="3" fill="white" opacity="0.6"/>
-            </svg>
-          </div>
+          }} />
 
           <div style={{ fontSize: 20, fontWeight: 700, marginBottom: 4 }}>ZenState</div>
           <div style={{ fontSize: 13, color: 'var(--zen-secondary-text)', marginBottom: 8 }}>
